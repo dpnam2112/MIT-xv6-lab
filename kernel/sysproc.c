@@ -28,6 +28,17 @@ sys_fork(void)
 }
 
 uint64
+sys_trace(void)
+{
+  // read the argument
+  int mask;
+  argint(0, &mask);
+  struct proc* proc = myproc();
+  proc->trace_mask |= mask;
+  return 0;
+}
+
+uint64
 sys_wait(void)
 {
   uint64 p;
