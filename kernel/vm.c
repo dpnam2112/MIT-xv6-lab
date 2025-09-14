@@ -488,12 +488,46 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
 
 #ifdef LAB_PGTBL
+// print all of the page table's entries and the child page tables
+void
+_recursive_print_pgtbl(pagetable_t pagetable, int cur_level, uint64 vaddr) {
+  // traverse all of the entries
+  for (int pgoffset = 0; pgoffset < (1 << 9); pgoffset++) {
+    // calculate virtual address associated with the current entry
+    pte_t *pte = &pagetable[pgoffset];
+    if (!(*pte & PTE_V)) {
+      // skip invalid page table entries
+      continue;
+    }
+    uint64 va = vaddr + (pgoffset << PXSHIFT(cur_level));
+    if (cur_level == 2) {
+      printf(".. ");
+    } else if (cur_level == 1) {
+      printf(".. .. ");
+    } else {
+      printf(".. .. .. ");
+    }
+
+
+    uint64 pa = PTE2PA(*pte);
+    printf("%p: ", (void*) va);
+    printf("pte %p ", (void*) *pte);
+    printf("pa %p\n", (void*) pa);
+
+    if (cur_level > 0) {
+      _recursive_print_pgtbl((pagetable_t) pa, cur_level - 1, va);
+    }
+  }
+}
+
 void
 vmprint(pagetable_t pagetable) {
   // your code here
+  printf("page table %p\n", pagetable);
+  _recursive_print_pgtbl(pagetable, 2, 0);
 }
-#endif
 
+#endif
 
 
 #ifdef LAB_PGTBL
