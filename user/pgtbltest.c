@@ -2,6 +2,7 @@
 #include "kernel/fcntl.h"
 #include "kernel/types.h"
 #include "kernel/riscv.h"
+#include "kernel/memlayout.h"
 #include "user/user.h"
 
 #define N (8 * (1 << 20))
@@ -14,6 +15,9 @@ void superpg_test();
 int
 main(int argc, char *argv[])
 {
+  printf("0x%lx\n", USYSCALL);
+//  struct usyscall *usyscall = (struct usyscall*)USYSCALL;
+//  printf("%d\n", usyscall->pid);
   print_pgtbl();
   ugetpid_test();
   print_kpgtbl();
