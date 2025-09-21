@@ -117,6 +117,36 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   return &pagetable[PX(0, va)];
 }
 
+// Similar to walk, but the level of leaves can be controlled instead of just 0 by default
+pte_t *
+walk_to_level(pagetable_t pagetable, uint64 va, int alloc, int lv)
+{
+  if(va >= MAXVA)
+    panic("walk_to_level");
+
+  if (!(lv >= 0 && lv <= 2)) {
+    panic("walk_to_level");
+  }
+
+  for(int level = 2; level > lv; level--) {
+    pte_t *pte = &pagetable[PX(level, va)];
+    if(*pte & PTE_V) {
+      pagetable = (pagetable_t)PTE2PA(*pte);
+#ifdef LAB_PGTBL
+      if(PTE_LEAF(*pte)) {
+        return pte;
+      }
+#endif
+    } else {
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
+        return 0;
+      memset(pagetable, 0, PGSIZE);
+      *pte = PA2PTE(pagetable) | PTE_V;
+    }
+  }
+  return &pagetable[PX(lv, va)];
+}
+
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
@@ -159,6 +189,8 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
+#define SUPERPGALIGNED(a) ((a & (SUPERPGSIZE - 1)) == 0)
+
   uint64 a, last;
   pte_t *pte;
 
@@ -174,16 +206,33 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   a = va;
   last = va + size - PGSIZE;
   for(;;){
-    if((pte = walk(pagetable, a, 1)) == 0)
-      return -1;
-    if(*pte & PTE_V)
-      panic("mappages: remap");
-    *pte = PA2PTE(pa) | perm | PTE_V;
-    if(a == last)
-      break;
-    a += PGSIZE;
-    pa += PGSIZE;
-  }
+    if (
+      (last + PGSIZE - a >= SUPERPGSIZE) &&
+      SUPERPGALIGNED(a) && SUPERPGALIGNED(pa) &&
+      (pte = walk_to_level(pagetable, a, 1, 1)) != 0 &&
+      (*pte & PTE_V) == 0 
+    ) {
+      // map to a superpage if these conditions are satisfied:
+      // - the size being requested is greater than SUPERPGSIZE
+      // - va and pa are both superpage-aligned (be multiples of SUPERPGSIZE)
+      // - there is an available level-1 entry in the page table
+      *pte = PA2PTE(pa) | perm | PTE_V;
+      a += SUPERPGSIZE;
+      pa += SUPERPGSIZE;
+      if (a > last) break;
+    } else {
+      if((pte = walk(pagetable, a, 1)) == 0)
+        return -1;
+      if(*pte & PTE_V)
+        panic("mappages: remap");
+      *pte = PA2PTE(pa) | perm | PTE_V;
+      if(a == last)
+        break;
+      a += PGSIZE;
+      pa += PGSIZE;
+    }
+    }
+
   return 0;
 }
 
