@@ -43,6 +43,13 @@
 #define KERNBASE 0x80000000L
 #define PHYSTOP (KERNBASE + 128*1024*1024)
 
+// Define section for physical super pages
+#define SUPERPG_BASE KERNBASE // KERNBASE is already superpage-aligned
+#define SUPERPGSIZE (2 * (1 << 20))
+#define SUPERPG_STOP (SUPERPG_BASE + SUPERPGSIZE * 16)
+
+#define PG_BASE SUPERPG_STOP + PGSIZE
+
 // map the trampoline page to the highest address,
 // in both user and kernel space.
 #define TRAMPOLINE (MAXVA - PGSIZE)
