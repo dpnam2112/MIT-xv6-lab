@@ -8,6 +8,8 @@
 #include "proc.h"
 #include "fs.h"
 
+#define SUPERPGALIGNED(a) ((uint64) a == SUPERPGROUNDUP((uint64) a))
+
 /*
  * the kernel's page table.
  */
@@ -189,8 +191,6 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
-#define SUPERPGALIGNED(a) ((a & (SUPERPGSIZE - 1)) == 0)
-
   uint64 a, last;
   pte_t *pte;
 
@@ -206,35 +206,39 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   a = va;
   last = va + size - PGSIZE;
   for(;;){
-    if (
-      (last + PGSIZE - a >= SUPERPGSIZE) &&
-      SUPERPGALIGNED(a) && SUPERPGALIGNED(pa) &&
-      (pte = walk_to_level(pagetable, a, 1, 1)) != 0 &&
-      !(*pte | PTE_V)
-    ) {
-      // map to a superpage if these conditions are satisfied:
-      // - the size being requested is greater than SUPERPGSIZE
-      // - va and pa are both superpage-aligned (be multiples of SUPERPGSIZE)
-      // - there is an available level-1 entry in the page table
-      *pte = PA2PTE(pa) | perm | PTE_V;
+    if((pte = walk(pagetable, a, 1)) == 0)
+      return -1;
+    if(*pte & PTE_V)
+      panic("mappages: remap");
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
 
-      a += SUPERPGSIZE;
-      pa += SUPERPGSIZE;
+  return 0;
+}
 
-      if (a > last) break;
-    } else {
-      if((pte = walk(pagetable, a, 1)) == 0)
-        return -1;
-      if(*pte & PTE_V)
-        panic("mappages: remap");
-      *pte = PA2PTE(pa) | perm | PTE_V;
-      if(a == last)
-        break;
-      a += PGSIZE;
-      pa += PGSIZE;
-    }
-    }
+int
+mapsuperpage(pagetable_t pagetable, uint64 va, uint64 pa, int perm) {
+  printf("[debug] mapsuperpage: va=%p, pa=%p\n", (void*) va, (void*) pa);
 
+  if (!SUPERPGALIGNED(va)) {
+    panic("mapsuperpage: va is not superpage-aligned\n");
+  }
+
+  if (!SUPERPGALIGNED(pa)) {
+    panic("mapsuperpage: pa is not superpage-aligned\n");
+  }
+
+  pte_t* lv1_pte = walk_to_level(pagetable, va, 1, 1);
+  // we expect an empty pte for mapping
+  if (*lv1_pte & PTE_V) {
+    panic("mapsuperpage: expect an empty pte\n");
+  }
+
+  *lv1_pte = PA2PTE(pa) | PTE_V | perm;
   return 0;
 }
 
@@ -336,20 +340,42 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += sz){
+    pte_t* lv1_pte;
     if (
       SUPERPGALIGNED(a) &&
-      newsz - a >= SUPERPGSIZE &&
+      ((lv1_pte = walk_to_level(pagetable, a, 0, 1)) == 0 || !(*lv1_pte & PTE_V)) &&
+      PGROUNDUP(newsz) - a >= SUPERPGSIZE &&
       (mem = superalloc()) != 0
     ) {
+      if (!SUPERPGALIGNED(mem)) {
+        panic("uvmalloc: bad superpage allocation");
+      }
+
       // if the gap exceeds superpage's size and there is still superpage available
       sz = SUPERPGSIZE;
-      memset(mem, 0, SUPERPGSIZE);
-      if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+      memset(mem, 0, sz);
+      if(mapsuperpage(pagetable, a, (uint64) mem, PTE_R|PTE_U|xperm) != 0){
         superfree(mem);
         uvmdealloc(pagetable, a, oldsz);
         return 0;
+      } else {
+        pte_t* pte = walk(pagetable, a, 0);
+        pte_t* s_pte = walk(pagetable, a + 3 * PGSIZE, 0);
+        if (PTE2PA((uint64) pte) != PTE2PA((uint64) s_pte))
+          printf("uvmalloc: bad mapping\n");
+
+        if (!PTE_LEAF((uint64) *pte))
+          printf("uvmalloc: bad mapping, pte is not a leaf\n");
+
+        printf("[debug] allocated and mapped a superpage\n");
       }
     } else {
+      if (SUPERPGALIGNED(a)) {
+        printf("[debug] ptr lv1_pte = %p\n", (void*) lv1_pte);
+        if (lv1_pte != 0)
+          printf("[debug] lv1_pte = %p\n", (void*) *lv1_pte);
+      }
+
       sz = PGSIZE;
       mem = kalloc();
       if(mem == 0){
