@@ -222,8 +222,6 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
 int
 mapsuperpage(pagetable_t pagetable, uint64 va, uint64 pa, int perm) {
-  printf("[debug] mapsuperpage: va=%p, pa=%p\n", (void*) va, (void*) pa);
-
   if (!SUPERPGALIGNED(va)) {
     panic("mapsuperpage: va is not superpage-aligned\n");
   }
@@ -366,16 +364,8 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 
         if (!PTE_LEAF((uint64) *pte))
           printf("uvmalloc: bad mapping, pte is not a leaf\n");
-
-        printf("[debug] allocated and mapped a superpage\n");
       }
     } else {
-      if (SUPERPGALIGNED(a)) {
-        printf("[debug] ptr lv1_pte = %p\n", (void*) lv1_pte);
-        if (lv1_pte != 0)
-          printf("[debug] lv1_pte = %p\n", (void*) *lv1_pte);
-      }
-
       sz = PGSIZE;
       mem = kalloc();
       if(mem == 0){
@@ -443,6 +433,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
+
 // Given a parent process's page table, copy
 // its memory into a child's page table.
 // Copies both the page table and the
@@ -459,8 +450,25 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   int szinc;
 
   for(i = 0; i < sz; i += szinc){
+    pte_t* superpg_pte;
+    if (SUPERPGALIGNED(i) && (superpg_pte = walk_to_level(old, i, 0, 1)) != 0 && PTE_LEAF(*superpg_pte)) {
+      szinc = SUPERPGSIZE;
+      void* new_pa;
+      if ((new_pa = superalloc()) == 0)
+        goto err;
+
+      pa = PTE2PA(*superpg_pte);
+      flags = PTE_FLAGS(*superpg_pte);
+      memmove(new_pa, (char*)pa, SUPERPGSIZE);
+      if (mapsuperpage(new, i, (uint64) new_pa, flags) != 0) {
+        superfree(new_pa);
+        goto err;
+      }
+      continue;
+    }
+
     szinc = PGSIZE;
-    szinc = PGSIZE;
+
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
@@ -616,11 +624,11 @@ _recursive_print_pgtbl(pagetable_t pagetable, int cur_level, uint64 vaddr) {
     }
     uint64 va = vaddr + (pgoffset << PXSHIFT(cur_level));
     if (cur_level == 2) {
-      printf(".. ");
+      printf(" ..");
     } else if (cur_level == 1) {
-      printf(".. .. ");
+      printf(" .. ..");
     } else {
-      printf(".. .. .. ");
+      printf(" .. .. ..");
     }
 
 

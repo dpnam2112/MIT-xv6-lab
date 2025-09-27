@@ -1,0 +1,27 @@
+(Dummy text to pass the test suite)
+Lab: page tables
+In this lab you will explore page tables and modify them to implement common OS features.
+
+Before you start coding, read Chapter 3 of the xv6 book, and related files:
+
+kernel/memlayout.h, which captures the layout of memory.
+kernel/vm.c, which contains most virtual memory (VM) code.
+kernel/kalloc.c, which contains code for allocating and freeing physical memory.
+It may also help to consult the RISC-V privileged architecture manual.
+To start the lab, switch to the pgtbl branch:
+
+  $ git fetch
+  $ git checkout pgtbl
+  $ make clean
+  
+Inspect a user-process page table (easy)
+To help you understand RISC-V page tables, your first task is to explain the page table for a user process.
+
+Run make qemu and run the user program pgtbltest. The print_pgtbl functions prints out the page-table entries for the first 10 and last 10 pages of the pgtbltest process using the pgpte system call that we added to xv6 for this lab. The output looks as follows:
+
+va 0 pte 0x21FCF45B pa 0x87F3D000 perm 0x5B
+va 1000 pte 0x21FCE85B pa 0x87F3A000 perm 0x5B
+...
+va 0xFFFFD000 pte 0x0 pa 0x0 perm 0x0
+va 0xFFFFE000 pte 0x21FD80C7 pa 0x87F60000 perm 0xC7
+va 0xFFFFF000 pte 0x20001C4B pa 0x80007000 perm 0x4B

@@ -130,11 +130,9 @@ superpg_test()
   
   uint64 s = SUPERPGROUNDUP((uint64) end);
   supercheck(s);
-  printf("supercheck-ed\n");
   if((pid = fork()) < 0) {
     err("fork");
   } else if(pid == 0) {
-    printf("fork:supercheck\n");
     supercheck(s);
     exit(0);
   } else {
