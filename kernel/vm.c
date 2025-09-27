@@ -210,15 +210,17 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
       (last + PGSIZE - a >= SUPERPGSIZE) &&
       SUPERPGALIGNED(a) && SUPERPGALIGNED(pa) &&
       (pte = walk_to_level(pagetable, a, 1, 1)) != 0 &&
-      (*pte & PTE_V) == 0 
+      !(*pte | PTE_V)
     ) {
       // map to a superpage if these conditions are satisfied:
       // - the size being requested is greater than SUPERPGSIZE
       // - va and pa are both superpage-aligned (be multiples of SUPERPGSIZE)
       // - there is an available level-1 entry in the page table
       *pte = PA2PTE(pa) | perm | PTE_V;
+
       a += SUPERPGSIZE;
       pa += SUPERPGSIZE;
+
       if (a > last) break;
     } else {
       if((pte = walk(pagetable, a, 1)) == 0)
@@ -249,8 +251,31 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 
-  for(a = va; a < va + npages*PGSIZE; a += sz){
+  uint64 end = va + npages*PGSIZE;
+
+  for(a = va; a < end; a += sz){
     sz = PGSIZE;
+
+    if (SUPERPGALIGNED(a) && end - a >= SUPERPGSIZE) {
+      if((pte = walk_to_level(pagetable, a, 0, 1)) == 0)
+        panic("[unmap superpage] uvmunmap: walk_to_level");
+
+      if((*pte & PTE_V) == 0) {
+        printf("[unmap superpage] va=%ld pte=%ld\n", a, *pte);
+        panic("[unmap superpage] uvmunmap: not mapped");
+      }
+
+      if(PTE_LEAF(*pte)) {
+        if (do_free) {
+          uint64 pa = PTE2PA(*pte);
+          superfree((void*)pa);
+        }
+        *pte = 0;
+        sz = SUPERPGSIZE;
+        continue;
+      }
+    }
+
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0) {
@@ -311,19 +336,34 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += sz){
-    sz = PGSIZE;
-    mem = kalloc();
-    if(mem == 0){
-      uvmdealloc(pagetable, a, oldsz);
-      return 0;
-    }
+    if (
+      SUPERPGALIGNED(a) &&
+      newsz - a >= SUPERPGSIZE &&
+      (mem = superalloc()) != 0
+    ) {
+      // if the gap exceeds superpage's size and there is still superpage available
+      sz = SUPERPGSIZE;
+      memset(mem, 0, SUPERPGSIZE);
+      if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+        superfree(mem);
+        uvmdealloc(pagetable, a, oldsz);
+        return 0;
+      }
+    } else {
+      sz = PGSIZE;
+      mem = kalloc();
+      if(mem == 0){
+        uvmdealloc(pagetable, a, oldsz);
+        return 0;
+      }
 #ifndef LAB_SYSCALL
-    memset(mem, 0, sz);
+      memset(mem, 0, sz);
 #endif
-    if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-      kfree(mem);
-      uvmdealloc(pagetable, a, oldsz);
-      return 0;
+      if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+        kfree(mem);
+        uvmdealloc(pagetable, a, oldsz);
+        return 0;
+      }
     }
   }
   return newsz;
