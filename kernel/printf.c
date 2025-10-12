@@ -163,6 +163,7 @@ void
 panic(char *s)
 {
   pr.locking = 0;
+  backtrace();
   printf("panic: ");
   printf("%s\n", s);
   panicked = 1; // freeze uart output from other CPUs
@@ -175,4 +176,25 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+void
+backtrace(void)
+{
+  uint64 cur_fp; // frame pointer of the current callee
+
+  // load the current value of register fp to cur_fp
+  cur_fp = r_fp();
+
+  uint64 stackpg = PGROUNDDOWN(cur_fp);
+
+  while (1){
+    uint64* ra = (uint64*) (cur_fp - 8);
+    // print out return addr associated to the current callee
+    printf("%p\n", (void*) *ra);
+    uint64 next_fp = *(uint64*) (cur_fp - 16);
+    if (next_fp >= stackpg + PGSIZE || next_fp < stackpg)
+      break;
+    cur_fp = next_fp;
+  }
 }

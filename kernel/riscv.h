@@ -88,7 +88,6 @@ r_sie()
   asm volatile("csrr %0, sie" : "=r" (x) );
   return x;
 }
-
 static inline void 
 w_sie(uint64 x)
 {
@@ -348,6 +347,14 @@ sfence_vma()
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
+
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
 
 #endif // __ASSEMBLER__
 
