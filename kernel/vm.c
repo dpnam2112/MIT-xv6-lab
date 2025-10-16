@@ -449,3 +449,64 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+// a page is cow-allowed iff:
+// - it's a valid page.
+// - it's read-only
+// - it has cow bit set.
+//
+// check if the pte is cow-allowed.
+int
+vm_pte_cow_allowed(pagetable_t pagetable, pte_t* pte)
+{
+  if (!(*pte & PTE_V)){
+    panic("vm_cow_allowed");
+  }
+
+  // read-only and cow-set
+  return ((*pte & PTE_R) && !(*pte & PTE_W) && (*pte & PTE_COW));
+}
+
+// Set state of the target pte to cow-allowed.
+// return 0 if success, otherwise, return non-zero integer.
+int
+vm_pte_set_cow_allowed(pagetable_t pagetable, pte_t* pte)
+{
+  if (!(*pte & PTE_V)){
+    panic("vm_cow_allowed");
+  }
+  *pte = *pte | PTE_R;
+  *pte = *pte & (~PTE_W); // set W bit to 0.
+  *pte = *pte | PTE_COW;
+  return 0;
+}
+
+// Unset copy-on-write PTE.
+// Specifically, allow write permission and unset CoW flag.
+int
+vm_pte_unset_cow(pagetable_t pagetable, pte_t* pte)
+{
+  if (!(*pte & PTE_V)){
+    panic("vm_pte_unset_cow: invalid pte");
+  }
+
+  if (!vm_pte_cow_allowed(pagetable, pte)){
+    panic("vm_pte_unset_cow: pte is not cow-allowed");
+  }
+
+  *pte = *pte | PTE_W; // allow write permission
+  *pte = *pte & (~PTE_COW); // unset copy-on-write bit
+  return 0;
+}
+
+int
+vm_cow_allowed(pagetable_t pagetable, uint64 va)
+{
+  pte_t* pte = walk(pagetable, va, 0);
+  if (!(*pte & PTE_V)){
+    panic("vm_cow_allowed");
+  }
+
+  return vm_pte_cow_allowed(pagetable, pte);
+}
+

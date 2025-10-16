@@ -49,8 +49,10 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
+
+  uint64 scause = r_scause();
   
-  if(r_scause() == 8){
+  if(scause == 8){
     // system call
 
     if(killed(p))
@@ -67,6 +69,17 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  }  else if (scause == 15){
+    // 15: writing to a virtual address causes a page fault
+    // in this case, we perform copy-on-write if the page is PoW-allowed
+    uint64 va = r_stval();
+
+    // Handle copy-on-write
+    if (handle_cow(va) != 0){
+      printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
@@ -216,3 +229,47 @@ devintr()
   }
 }
 
+
+// Handle copy-on-write.
+// If the page is not CoW-able, return a non-zero integer.
+int
+trap_handle_cow(uint64 va)
+{
+  struct proc* p = myproc();
+  acquire(&p->lock);
+  pte_t* pte = walk(p->pagetable, va, 0);
+
+  if (vm_pte_cow_allowed(p->pagetable, pte)){
+    struct proc* parent = p->parent;
+
+    acquire(&parent->lock);
+
+    // pte of the counterpart va in parent's memory space
+    pte_t* parent_pte = walk(parent->pagetable, va, 0);
+
+    // always assume that the counterpart in parent's vm is cow-allowed
+    // otherwise, kernel is in panic state
+    if (!vm_pte_cow_allowed(parent_pte)){
+      release(&p->lock);
+      release(&parent->lock);
+      panic("trap_handle_cow: parent's va is not cow-allowed");
+    }
+
+    // clone a new frame
+    void* cloned = kalloc();
+    memmove(cloned, (void*) PTE2PA(*parent_pte), PGSIZE);
+    vm_pte_unset_cow(p->pagetable, pte);
+    vm_pte_unset_cow(parent->pagetable, parent_pte);
+
+    // the process should try the trapped instruction again
+    // set process's pc to sepc (address of the failed instruction)
+
+
+    release(&p->lock);
+    release(&parent->lock);
+    return 0;
+  } else {
+    release(&p->lock);
+    return 1;
+  }
+}
