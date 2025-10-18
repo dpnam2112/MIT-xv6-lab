@@ -63,8 +63,8 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
-void            kmem_decr_pg_refcount(void*);
-void            kmem_incr_pg_refcount(void*);
+void*           kmem_detachpageref(void*);
+void            kmem_addpageref(void*);
 
 // log.c
 void            initlog(int, struct superblock*);

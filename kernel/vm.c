@@ -529,9 +529,9 @@ vm_map_cowpage(pagetable_t dest_pgtbl, uint64 va, pte_t* src_pte)
   }
   uint64 src_kpage = PTE2PA(*src_pte);
   memmove((void*) PTE2PA(*pte), (void*) src_kpage, PGSIZE);
+  kmem_addpageref((void*)src_kpage);
   vm_pte_set_cow_allowed(pte);
   vm_pte_set_cow_allowed(src_pte);
-  kmem_incr_pg_refcount((void*)src_kpage);
   return 0;
 }
 
@@ -546,13 +546,10 @@ vm_resolve_cowpage(pagetable_t pgtbl, uint64 pageaddr)
     panic("vm_resolve_cowpage: walk");
   if (!vm_pte_cow_allowed(pte))
     panic("vm_resolve_cowpage: not a CoW page");
-  void* new_kpage = kalloc();
-  if (new_kpage == 0)
+  void* cowpage = (void*) PTE2PA(*pte);
+  void* newpage = kmem_detachpageref(cowpage);
+  if (newpage == 0)
     panic("vm_resolve_cowpage: no physical pages available");
-
-  void* ref_kpage = (void*) PTE2PA(*pte);
-  memmove(new_kpage, ref_kpage, PGSIZE);
-  kmem_decr_pg_refcount(ref_kpage);
   vm_pte_clear_cow_allowed(pte);
   return 0;
 }

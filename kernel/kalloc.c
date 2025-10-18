@@ -21,6 +21,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
+  uint32 refcount[PHYPAGECOUNT];
 } kmem;
 
 void
@@ -74,9 +75,44 @@ kalloc(void)
   r = kmem.freelist;
   if(r)
     kmem.freelist = r->next;
+  uint64 offset = (PGROUNDDOWN((uint64) r) - PGROUNDDOWN(KERNBASE)) >> PGSHIFT;
+  kmem.refcount[offset]++;
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+// Add a new page reference
+// Returns addr
+void
+kmem_addpageref(void* addr)
+{
+  acquire(&kmem.lock);
+  uint64 offset = (PGROUNDDOWN((uint64) addr) - PGROUNDDOWN(KERNBASE)) >> PGSHIFT;
+  kmem.refcount[offset]++;
+  release(&kmem.lock);
+}
+
+void*
+kmem_detachpageref(void* addr)
+{
+  acquire(&kmem.lock);
+  uint64 offset = (PGROUNDDOWN((uint64) addr) - PGROUNDDOWN(KERNBASE)) >> PGSHIFT;
+  if (kmem.refcount[offset] == 0)
+    panic("kmem_detachpageref: detach a page that has no ref");
+  if (kmem.refcount[offset] == 1){
+    release(&kmem.lock);
+    return addr;
+  }
+  void* new = kalloc();
+  if (new == 0){
+    release(&kmem.lock);
+    return 0;
+  }
+  kmem.refcount[offset]--;
+  memmove(new, addr, PGSIZE);
+  release(&kmem.lock);
+  return new;
 }
