@@ -63,6 +63,8 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            kmem_decr_pg_refcount(void*);
+void            kmem_incr_pg_refcount(void*);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -173,6 +175,12 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             vm_pte_readonly(pte_t *);
+int             vm_pte_cow_allowed(pte_t *);
+int             vm_clear_cow_allowed(pte_t *);
+int             vm_set_cow_allowed(pte_t *);
+int             vm_map_cowpage(pagetable_t, uint64, pte_t*);
+int             vm_resolve_cowpage(pte_t*, uint64);
 
 // plic.c
 void            plicinit(void);

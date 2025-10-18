@@ -324,12 +324,17 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    if (flags & PTE_W || vm_pte_cow_allowed(pte)) {
+      if (vm_map_cowpage(new, i, pte) != 0)
+        goto err;
+    } else {
+      if((mem = kalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, PGSIZE);
+      if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+        kfree(mem);
+        goto err;
+      }
     }
   }
   return 0;
@@ -450,6 +455,13 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
+int
+vm_pte_readonly(pte_t* pte)
+{
+  // read-only
+  return ((*pte & PTE_R) && !(*pte & PTE_W));
+}
+
 // a page is cow-allowed iff:
 // - it's a valid page.
 // - it's read-only
@@ -457,23 +469,18 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 //
 // check if the pte is cow-allowed.
 int
-vm_pte_cow_allowed(pagetable_t pagetable, pte_t* pte)
+vm_pte_cow_allowed(pte_t* pte)
 {
-  if (!(*pte & PTE_V)){
-    panic("vm_cow_allowed");
-  }
-
-  // read-only and cow-set
-  return ((*pte & PTE_R) && !(*pte & PTE_W) && (*pte & PTE_COW));
+  return (vm_pte_readonly(pte) && (*pte & PTE_COW));
 }
 
 // Set state of the target pte to cow-allowed.
 // return 0 if success, otherwise, return non-zero integer.
 int
-vm_pte_set_cow_allowed(pagetable_t pagetable, pte_t* pte)
+vm_pte_set_cow_allowed(pte_t* pte)
 {
   if (!(*pte & PTE_V)){
-    panic("vm_cow_allowed");
+    panic("vm_pte_set_cow_allowed: pte is invalid");
   }
   *pte = *pte | PTE_R;
   *pte = *pte & (~PTE_W); // set W bit to 0.
@@ -481,16 +488,15 @@ vm_pte_set_cow_allowed(pagetable_t pagetable, pte_t* pte)
   return 0;
 }
 
-// Unset copy-on-write PTE.
-// Specifically, allow write permission and unset CoW flag.
+// allow write permission and unset CoW flag.
 int
-vm_pte_unset_cow(pagetable_t pagetable, pte_t* pte)
+vm_pte_clear_cow_allowed(pte_t* pte)
 {
   if (!(*pte & PTE_V)){
     panic("vm_pte_unset_cow: invalid pte");
   }
 
-  if (!vm_pte_cow_allowed(pagetable, pte)){
+  if (!vm_pte_cow_allowed(pte)){
     panic("vm_pte_unset_cow: pte is not cow-allowed");
   }
 
@@ -507,6 +513,46 @@ vm_cow_allowed(pagetable_t pagetable, uint64 va)
     panic("vm_cow_allowed");
   }
 
-  return vm_pte_cow_allowed(pagetable, pte);
+  return vm_pte_cow_allowed(pte);
 }
 
+// Create a new CoW page in the given address space
+int
+vm_map_cowpage(pagetable_t dest_pgtbl, uint64 va, pte_t* src_pte)
+{
+  if (!(*src_pte & PTE_W || vm_pte_cow_allowed(src_pte))){
+    panic("vm_map_cowpage: src_pte must be either writable or copy-on-write allowed");
+  }
+  pte_t* pte = walk(dest_pgtbl, va, 1);
+  if (*pte & PTE_R || *pte & PTE_W || *pte & PTE_X){
+    panic("vm_map_cowpage: va is in-use.");
+  }
+  uint64 src_kpage = PTE2PA(*src_pte);
+  memmove((void*) PTE2PA(*pte), (void*) src_kpage, PGSIZE);
+  vm_pte_set_cow_allowed(pte);
+  vm_pte_set_cow_allowed(src_pte);
+  kmem_incr_pg_refcount((void*)src_kpage);
+  return 0;
+}
+
+int
+vm_resolve_cowpage(pagetable_t pgtbl, uint64 pageaddr)
+{
+  if (!(PGROUNDDOWN(pageaddr)))
+    panic("vm_resolve_cowpage: pageaddr must be page-aligned");
+
+  pte_t* pte = walk(pgtbl, pageaddr, 0);
+  if (*pte == 0)
+    panic("vm_resolve_cowpage: walk");
+  if (!vm_pte_cow_allowed(pte))
+    panic("vm_resolve_cowpage: not a CoW page");
+  void* new_kpage = kalloc();
+  if (new_kpage == 0)
+    panic("vm_resolve_cowpage: no physical pages available");
+
+  void* ref_kpage = (void*) PTE2PA(*pte);
+  memmove(new_kpage, ref_kpage, PGSIZE);
+  kmem_decr_pg_refcount(ref_kpage);
+  vm_pte_clear_cow_allowed(pte);
+  return 0;
+}
