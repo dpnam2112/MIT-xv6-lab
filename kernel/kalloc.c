@@ -86,13 +86,14 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
+  if(r == 0){
+    release(&kmem.lock);
+    return 0;
+  }
+  kmem.freelist = r->next;
   kmem.refcount[PGOFFSET(r)]++;
   release(&kmem.lock);
-
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+  memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
 

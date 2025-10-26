@@ -35,16 +35,13 @@ int
 trap_handle_cow(uint64 va)
 {
   struct proc* p = myproc();
-  acquire(&p->lock);
   uint64 pageaddr = PGROUNDDOWN(va);
   pte_t* pte = walk(p->pagetable, pageaddr, 0);
   if (pte == 0)
     return 1;
   if (vm_pte_cow_allowed(pte) && vm_resolve_cowpage(pte) == 0){
-    release(&p->lock);
     return 0;
   } else {
-    release(&p->lock);
     return 1;
   }
 }

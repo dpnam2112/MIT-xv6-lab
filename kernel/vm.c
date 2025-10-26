@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -383,7 +385,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       return -1;
 
     if (vm_pte_cow_allowed(pte)){
-      if (vm_resolve_cowpage(pte) != 0){
+      uint cowpage_resolved = vm_resolve_cowpage(pte);
+      if (cowpage_resolved == 1){
+        struct proc* p = myproc();
+        setkilled(p);
+        exit(-1);
+      } else if (cowpage_resolved != 0) {
         panic("failed to resolve cow page");
       }
     }
@@ -546,6 +553,9 @@ vm_map_cowpage(pagetable_t pgtbl, uint64 va, pte_t* target_pte)
   return 0;
 }
 
+// return code:
+// 0: success
+// 1: out of memory
 int
 vm_resolve_cowpage(pte_t* pte)
 {
@@ -553,8 +563,9 @@ vm_resolve_cowpage(pte_t* pte)
     panic("pte not mapping to a cow-able page");
   void* cowpage = (void*) PTE2PA(*pte);
   void* newpage = kmem_detachpageref(cowpage);
-  if (newpage == 0)
-    panic("vm_resolve_cowpage: no physical pages available");
+  if (newpage == 0) {
+    return 1;
+  }
   if (memcmp(cowpage, newpage, PGSIZE) != 0)
     panic("vm_resolve_cowpage\n");
 
