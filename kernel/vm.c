@@ -329,6 +329,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       if (vm_map_cowpage(new, i, pte) != 0)
         goto err;
     } else if (vm_pte_readonly(pte)){
+      // add page reference to read-only page
+      kmem_addpageref((void*) pa);
       if(mappages(new, i, PGSIZE, pa, flags) != 0){
         goto err;
       }
@@ -553,10 +555,13 @@ vm_resolve_cowpage(pte_t* pte)
   void* newpage = kmem_detachpageref(cowpage);
   if (newpage == 0)
     panic("vm_resolve_cowpage: no physical pages available");
-  vm_pte_clear_cow_allowed(pte);
   if (memcmp(cowpage, newpage, PGSIZE) != 0)
     panic("vm_resolve_cowpage\n");
-  printf("hello resolve\n");
-  *pte = (*pte) | PA2PTE(newpage);
+
+  // replace PPN
+  *pte = PA2PTE(newpage) | PTE_FLAGS(*pte) | PTE_V;
+
+  // clear cow bit
+  vm_pte_clear_cow_allowed(pte);
   return 0;
 }
