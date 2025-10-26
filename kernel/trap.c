@@ -86,11 +86,10 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  }  else if (scause == 15){
+  }  else if (scause == 15 && r_stval() < MAXVA){
     // 15: writing to a virtual address causes a page fault
     // in this case, we perform copy-on-write if the page is PoW-allowed
     uint64 va = r_stval();
-
     uint64 cow_return;
 
     // Handle copy-on-write
