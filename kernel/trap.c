@@ -36,11 +36,11 @@ trap_handle_cow(uint64 va)
 {
   struct proc* p = myproc();
   acquire(&p->lock);
-  pte_t* pte = walk(p->pagetable, va, 0);
-
   uint64 pageaddr = PGROUNDDOWN(va);
-
-  if (vm_resolve_cowpage(p->pagetable, pageaddr) == 0){
+  pte_t* pte = walk(p->pagetable, pageaddr, 0);
+  if (pte == 0)
+    return 1;
+  if (vm_pte_cow_allowed(pte) && vm_resolve_cowpage(pte) == 0){
     release(&p->lock);
     return 0;
   } else {
@@ -94,8 +94,10 @@ usertrap(void)
     // in this case, we perform copy-on-write if the page is PoW-allowed
     uint64 va = r_stval();
 
+    uint64 cow_return;
+
     // Handle copy-on-write
-    if (trap_handle_cow(va) != 0){
+    if ((cow_return = trap_handle_cow(va)) != 0){
       printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
       printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
       setkilled(p);
@@ -186,6 +188,7 @@ kerneltrap()
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0)
     yield();
+
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.

@@ -180,7 +180,7 @@ int             vm_pte_cow_allowed(pte_t *);
 int             vm_clear_cow_allowed(pte_t *);
 int             vm_set_cow_allowed(pte_t *);
 int             vm_map_cowpage(pagetable_t, uint64, pte_t*);
-int             vm_resolve_cowpage(pte_t*, uint64);
+int             vm_resolve_cowpage(pte_t*);
 
 // plic.c
 void            plicinit(void);
