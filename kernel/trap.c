@@ -29,6 +29,23 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+// Handle copy-on-write.
+// If the page is not CoW-able, return a non-zero integer.
+int
+trap_handle_cow(uint64 va)
+{
+  struct proc* p = myproc();
+  uint64 pageaddr = PGROUNDDOWN(va);
+  pte_t* pte = walk(p->pagetable, pageaddr, 0);
+  if (pte == 0)
+    return 1;
+  if (vm_pte_cow_allowed(pte) && vm_resolve_cowpage(pte) == 0){
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -49,8 +66,10 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
+
+  uint64 scause = r_scause();
   
-  if(r_scause() == 8){
+  if(scause == 8){
     // system call
 
     if(killed(p))
@@ -67,6 +86,18 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  }  else if (scause == 15 && r_stval() < MAXVA){
+    // 15: writing to a virtual address causes a page fault
+    // in this case, we perform copy-on-write if the page is PoW-allowed
+    uint64 va = r_stval();
+    uint64 cow_return;
+
+    // Handle copy-on-write
+    if ((cow_return = trap_handle_cow(va)) != 0){
+      printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
@@ -154,6 +185,7 @@ kerneltrap()
   if(which_dev == 2 && myproc() != 0)
     yield();
 
+
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
   w_sepc(sepc);
@@ -215,4 +247,5 @@ devintr()
     return 0;
   }
 }
+
 

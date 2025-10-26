@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -324,12 +326,25 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    if ((flags & PTE_W) || vm_pte_cow_allowed(pte)) {
+      // map the current page to its counterpart and mark the PTEs as CoW-able.
+      if (vm_map_cowpage(new, i, pte) != 0)
+        goto err;
+    } else if (vm_pte_readonly(pte)){
+      // add page reference to read-only page
+      kmem_addpageref((void*) pa);
+      if(mappages(new, i, PGSIZE, pa, flags) != 0){
+        goto err;
+      }
+    }
+    else {
+      if((mem = kalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, PGSIZE);
+      if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+        kfree(mem);
+        goto err;
+      }
     }
   }
   return 0;
@@ -366,8 +381,20 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+    if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+      return -1;
+
+    if (vm_pte_cow_allowed(pte)){
+      uint cowpage_resolved = vm_resolve_cowpage(pte);
+      if (cowpage_resolved == 1){
+        struct proc* p = myproc();
+        setkilled(p);
+        exit(-1);
+      } else if (cowpage_resolved != 0) {
+        panic("failed to resolve cow page");
+      }
+    }
+    else if((*pte & PTE_W) == 0)
       return -1;
     pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
@@ -448,4 +475,104 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int
+vm_pte_readonly(pte_t* pte)
+{
+  // read-only
+  return ((*pte & PTE_R) && !(*pte & PTE_W || *pte & PTE_COW));
+}
+
+// a page is cow-allowed iff:
+// - it's a valid page.
+// - it's read-only
+// - it has cow bit set.
+//
+// check if the pte is cow-allowed.
+int
+vm_pte_cow_allowed(pte_t* pte)
+{
+  if (!(*pte & PTE_V))
+    panic("vm_pte_cow_allowed: invalid pte");
+  return (!(*pte & PTE_W) && (*pte & PTE_COW));
+}
+
+// Set state of the target pte to cow-allowed.
+// return 0 if success, otherwise, return non-zero integer.
+int
+vm_pte_set_cow_allowed(pte_t* pte)
+{
+  if (!(*pte & PTE_V)){
+    panic("vm_pte_set_cow_allowed: pte is invalid");
+  }
+  *pte = *pte & (~PTE_W); // set W bit to 0.
+  *pte = *pte | PTE_COW;
+  return 0;
+}
+
+// allow write permission and unset CoW flag.
+int
+vm_pte_clear_cow_allowed(pte_t* pte)
+{
+  if (!(*pte & PTE_V)){
+    panic("vm_pte_unset_cow: invalid pte");
+  }
+
+  if (!vm_pte_cow_allowed(pte)){
+    panic("vm_pte_unset_cow: pte is not cow-allowed");
+  }
+
+  *pte = *pte | PTE_W; // allow write permission
+  *pte = *pte & (~PTE_COW); // unset copy-on-write bit
+  return 0;
+}
+
+// Map a page in a memory address space to a target page in another memory address space.
+// target_pte is the PTE of the target page in a memory address space
+int
+vm_map_cowpage(pagetable_t pgtbl, uint64 va, pte_t* target_pte)
+{
+  if (!(*target_pte & PTE_V))
+    panic("vm_map_cowpage: invalid pte");
+
+  if (!((*target_pte & PTE_W) || vm_pte_cow_allowed(target_pte))){
+    panic("vm_map_cowpage: target_pte must be either writable or copy-on-write allowed");
+  }
+  pte_t* pte = walk(pgtbl, va, 1);
+  if (pte == 0)
+    panic("vm_map_cowpage: pte not found");
+  if (*pte & PTE_V){
+    panic("vm_map_cowpage: va is in-use.");
+  }
+  uint64 target_kpage = PTE2PA(*target_pte);
+  kmem_addpageref((void*)target_kpage);
+  *pte = (*pte) | PA2PTE(target_kpage) | PTE_V | PTE_FLAGS(*target_pte);
+  vm_pte_set_cow_allowed(pte);
+  vm_pte_set_cow_allowed(target_pte);
+  return 0;
+}
+
+// return code:
+// 0: success
+// 1: out of memory
+int
+vm_resolve_cowpage(pte_t* pte)
+{
+  if (!vm_pte_cow_allowed(pte))
+    panic("pte not mapping to a cow-able page");
+  void* cowpage = (void*) PTE2PA(*pte);
+  void* newpage = kmem_detachpageref(cowpage);
+  if (newpage == 0) {
+    return 1;
+  }
+  if (memcmp(cowpage, newpage, PGSIZE) != 0)
+    panic("vm_resolve_cowpage\n");
+
+  // replace PPN
+  *pte = PA2PTE(newpage) | PTE_FLAGS(*pte) | PTE_V;
+
+  // clear cow bit
+  vm_pte_clear_cow_allowed(pte);
+  return 0;
 }
