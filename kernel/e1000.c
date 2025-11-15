@@ -102,6 +102,25 @@ e1000_transmit(char *buf, int len)
   // a pointer so that it can be freed after send completes.
   //
 
+  // enqueue the descriptor to the ring
+  // move the tail pointer
+  struct tx_desc* tail = &tx_ring[regs[E1000_TDT]];
+  if (!(tail->status & E1000_TXD_STAT_DD)) {
+    // buffer is full
+    return -1;
+  }
+
+  if (tail->addr)
+    kfree((void*) tail->addr);
+  tail->addr = (uint64) buf;
+  tail->length = len;
+  tail->css = 0;
+  tail->cso = 0;
+
+  // report status | end of packet (EOP)
+  // EOP tells the NIC this buffer contains the end part of a packet
+  tail->cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;
   
   return 0;
 }
@@ -115,7 +134,34 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver a buf for each packet (using net_rx()).
   //
+  
+  // index of the next descriptor to be processed by the driver
+  // kernel expects there to be incoming packets ahead
+  uint64 nextd_i = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+  struct rx_desc* nextd = &rx_ring[nextd_i];
+  while (nextd->status & E1000_RXD_STAT_DD) {
+    if (nextd->errors){
+      // skip error chunks
+      regs[E1000_RDT] = nextd_i;
+      nextd_i = (nextd_i + 1) % RX_RING_SIZE;
+      nextd = &rx_ring[nextd_i];
+      continue;
+    }
 
+    // for simplicity, assume descriptors alway contain complete packets
+    if (!(nextd->status & E1000_RXD_STAT_EOP))
+      panic("e1000: assertion failed");
+    net_rx((char*) nextd->addr, nextd->length);
+    // renew the descriptor
+    rx_bufs[nextd_i] = kalloc();
+    if (rx_bufs[nextd_i] == 0)
+      panic("e1000: out of free pages");
+    nextd->addr = (uint64) rx_bufs[nextd_i];
+    nextd->status = 0;
+    regs[E1000_RDT] = nextd_i;
+    nextd_i = (nextd_i + 1) % RX_RING_SIZE;
+    nextd = &rx_ring[nextd_i];
+  }
 }
 
 void
@@ -128,3 +174,4 @@ e1000_intr(void)
 
   e1000_recv();
 }
+
