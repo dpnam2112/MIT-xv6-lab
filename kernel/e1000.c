@@ -139,25 +139,22 @@ e1000_recv(void)
   // kernel expects there to be incoming packets ahead
   uint64 nextd_i = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
   struct rx_desc* nextd = &rx_ring[nextd_i];
-  while (nextd->status & E1000_RXD_STAT_DD) {
-    if (nextd->errors){
-      // skip error chunks
-      regs[E1000_RDT] = nextd_i;
-      nextd_i = (nextd_i + 1) % RX_RING_SIZE;
-      nextd = &rx_ring[nextd_i];
-      continue;
-    }
 
+  while (nextd->status & E1000_RXD_STAT_DD) {
     // for simplicity, assume descriptors alway contain complete packets
     if (!(nextd->status & E1000_RXD_STAT_EOP))
       panic("e1000: assertion failed");
-    net_rx((char*) nextd->addr, nextd->length);
-    // renew the descriptor
+    if (!nextd->errors) {
+      net_rx((char*) rx_bufs[nextd_i], nextd->length);
+    }
+
+    // the buffer is already deallocated inside net_rx
     rx_bufs[nextd_i] = kalloc();
     if (rx_bufs[nextd_i] == 0)
       panic("e1000: out of free pages");
     nextd->addr = (uint64) rx_bufs[nextd_i];
     nextd->status = 0;
+    nextd->errors = 0;
     regs[E1000_RDT] = nextd_i;
     nextd_i = (nextd_i + 1) % RX_RING_SIZE;
     nextd = &rx_ring[nextd_i];

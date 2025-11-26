@@ -257,7 +257,6 @@ ping0()
   printf("ping0: starting\n");
 
   bind(2004);
-  
   uint32 dst = 0x0A000202; // 10.0.2.2
   int dport = NET_TESTS_PORT;
   char buf[5];
