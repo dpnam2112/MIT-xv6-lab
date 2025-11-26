@@ -387,6 +387,8 @@ ip_rx(char *buf, int len)
   struct ip *ip = (struct ip *)(eth + 1);
   if (ip->ip_p == IPPROTO_UDP){
     udp_rx(buf, len);
+  } else {
+    kfree(buf);
   }
 }
 
@@ -470,8 +472,10 @@ udp_rx(char* buf, int len)
   int saddr = ntohl(ip->ip_src);
 
   net_udp_sock_t *udp_sock = get_udp_sock(dport);
-  if (udp_sock == 0)
+  if (udp_sock == 0){
+    kfree(buf);
     return;
+  }
 
   // lookup udp buffer for the connection saddrort) (ip is intentionally ignored here)
   udp_recv_queue_t *recv_queue = get_udp_recv_queue(udp_sock);
