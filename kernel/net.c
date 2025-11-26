@@ -51,16 +51,17 @@ udp_recv_queue_enq(udp_recv_queue_t* q, char* payload, int len, int saddr, int s
   entry->saddr = saddr;
   entry->len = len;
   release(&q->lock);
+  wakeup(&q->tail);
 }
 
 // get the packet in FIFO order and put its content in dst_buf
 // return the length of the udp payload
+// if the queue is empty, put the current process in sleep state
 int
 udp_recv_queue_deq(udp_recv_queue_t* q, char* dst_buf, int *saddr, int *sport){
   acquire(&q->lock);
-  if (q->head == q->tail){
-    release(&q->lock);
-    return -1;
+  while (q->head == q->tail){
+    sleep(&q->tail, &q->lock);
   }
   udp_recv_queue_entry_t *entry = &q->entries[q->tail++];
   memmove(dst_buf, entry->buf, entry->len);
@@ -249,7 +250,7 @@ sys_recv(void)
   char *pkt_buf = kalloc();
   int pktlen;
   int saddr, sport;
-  while ((pktlen = udp_recv_queue_deq(q, pkt_buf, &saddr, &sport)) < 0);
+  pktlen = udp_recv_queue_deq(q, pkt_buf, &saddr, &sport);
   int copiedlen = (pktlen < maxlen) ? pktlen : maxlen;
 //  printf("debug: pkt_buf=%s\n", pkt_buf);
   if (copyout(p->pagetable, ubuf, pkt_buf, maxlen) != 0){
