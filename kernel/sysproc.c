@@ -4,6 +4,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
+#include "pstat.h"
 #include "proc.h"
 
 uint64
@@ -90,4 +91,21 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// getpstat(int pid, struct pstat *pstart)
+uint
+sys_getpstat(void)
+{
+  int pid;
+  uint64 upstat_addr;
+  argint(0, &pid);
+  argaddr(1, &upstat_addr);
+  struct pstat *pstat;
+  struct proc *p = myproc();
+  pstat = proc_getpstat(pid);
+  if (copyout(p->pagetable, upstat_addr, (char*) pstat, sizeof(struct pstat)) != 0){
+    return 1;
+  }
+  return 0;
 }

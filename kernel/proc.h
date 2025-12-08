@@ -1,3 +1,5 @@
+struct pstat;
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -92,6 +94,9 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
 
+  int wkup_time;              // the last time the process is waken up. 
+                               // used to calculate response time
+
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 
@@ -104,4 +109,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int lastsleeptick;           // the last tick at which the process starts sleeping
 };

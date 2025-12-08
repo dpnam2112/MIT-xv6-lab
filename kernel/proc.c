@@ -3,17 +3,21 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "pstat.h"
 #include "proc.h"
 #include "defs.h"
 
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
+#define PSTAT_ARR_SIZE 256
+struct pstat pstats[PSTAT_ARR_SIZE];
 
 struct proc *initproc;
 
 int nextpid = 1;
 struct spinlock pid_lock;
+struct spinlock pstats_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -50,11 +54,17 @@ procinit(void)
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");
+  initlock(&pstats_lock, "pstats_lock");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
+  }
+
+  for(struct pstat *pstat = pstats; pstat < pstats + PSTAT_ARR_SIZE; pstat++) {
+      initlock(&pstat->lk, "pstat");
+      pstat->pid = -1;
   }
 }
 
@@ -102,6 +112,29 @@ allocpid()
   return pid;
 }
 
+struct pstat*
+allocpstat(int pid){
+  struct pstat *prec = &pstats[pid % PSTAT_ARR_SIZE];
+  acquire(&prec->lk);
+  if (prec->pid > 0){
+    panic("allocpstat: pstat record in use");
+  }
+  prec->pid = pid;
+  release(&prec->lk);
+  return prec;
+}
+
+void
+freepstat(int pid){
+  struct pstat *prec = &pstats[pid % PSTAT_ARR_SIZE];
+  acquire(&prec->lk);
+  if (prec->pid > 0 && prec->pid != pid){
+    panic("freepstat: pstat record does not belong to this pid");
+  }
+  prec->pid = -1;
+  release(&prec->lk);
+}
+
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -124,6 +157,14 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->wkup_time = -1;
+
+  allocpstat(p->pid);
+  struct pstat* pstat = proc_getpstat(p->pid);
+  acquire(&pstat->lk);
+  pstat->ctime = ticks;
+  release(&pstat->lk);
+
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -157,6 +198,7 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+//  freepstat(p->pid);
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -348,6 +390,13 @@ exit(int status)
 {
   struct proc *p = myproc();
 
+  // set end time for stat/benchmark purposes
+  struct pstat* pstat = proc_getpstat(p->pid);
+  acquire(&pstat->lk);
+  pstat->etime = ticks;
+  release(&pstat->lk);
+
+
   if(p == initproc)
     panic("init exiting");
 
@@ -374,6 +423,7 @@ exit(int status)
   wakeup(p->parent);
   
   acquire(&p->lock);
+
 
   p->xstate = status;
   p->state = ZOMBIE;
@@ -462,6 +512,13 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        if (p->wkup_time > 0){
+          struct pstat* pstat = proc_getpstat(p->pid);
+          acquire(&pstat->lk);
+          pstat->rptime += ticks - p->wkup_time;
+          release(&pstat->lk);
+          p->wkup_time = -1;
+        }
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -562,6 +619,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  p->lastsleeptick = ticks;
 
   sched();
 
@@ -584,6 +642,7 @@ wakeup(void *chan)
     if(p != myproc()){
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
+        p->wkup_time = ticks;
         p->state = RUNNABLE;
       }
       release(&p->lock);
@@ -692,4 +751,15 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+struct pstat*
+proc_getpstat(int pid){
+  struct pstat *pst = &pstats[pid % PSTAT_ARR_SIZE];
+  acquire(&pst->lk);
+  if (pst->pid != pid){
+    panic("proc_getpstat: pstat record in use");
+  }
+  release(&pst->lk);
+  return pst;
 }
