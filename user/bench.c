@@ -4,18 +4,6 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
-void
-task(){
-  int n = 1000000;
-  for (int i = 0; i < n; i++){
-    if (i % 137 == 0){
-      printf(".");
-    }
-  }
-  printf("\n");
-  printf("child: done %d iterations\n", n);
-}
-
 void iotask(){
   int fd = open("bench_io", O_CREATE | O_RDWR);
   if (fd < 0){
@@ -26,6 +14,18 @@ void iotask(){
   write(fd, buf, strlen(buf));
   write(fd, buf, strlen(buf));
   close(fd);
+}
+
+void cputask(){
+  int COUNT = 5000000;
+  int checkpoint = COUNT / 2;
+  for (int i = 0; i < COUNT; i++){
+    if (i == checkpoint){
+      // just to ensure compiler won't do dirty trick
+      printf("checkpoint at %d\n", i);
+    }
+  }
+  printf("done %d iterations\n", COUNT);
 }
 
 void printpstat(struct pstat* pstat){
@@ -39,7 +39,7 @@ void printpstat(struct pstat* pstat){
 
 int
 main(){
-  const int NTASKS = 10;
+  const int NTASKS = 20;
   int pids[NTASKS];
 
   for (int i = 0; i < NTASKS; i++){
@@ -49,7 +49,7 @@ main(){
     }
     continue;
 worker:
-    iotask();
+    cputask();
     exit(0);
   }
 
