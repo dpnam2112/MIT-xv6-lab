@@ -487,6 +487,25 @@ wait(uint64 addr)
   }
 }
 
+void
+_scheduler_record_pstat(struct proc *p)
+{
+  struct pstat* pstat = proc_getpstat(p->pid);
+  acquire(&pstat->lk);
+  if (p->ongoing == 0){
+    p->ongoing = 1;
+    pstat->stime = ticks;
+  }
+
+  if (p->wkup_time > 0){
+    pstat->rptime += ticks - p->wkup_time;
+    p->wkup_time = -1;
+  }
+  // duration of the process being in RUNNABLE state
+  pstat->qtime += ticks - p->last_runnable_tick;
+  release(&pstat->lk);
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -515,20 +534,7 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
-        struct pstat* pstat = proc_getpstat(p->pid);
-        acquire(&pstat->lk);
-        if (p->ongoing == 0){
-          p->ongoing = 1;
-          pstat->stime = ticks;
-        }
-
-        if (p->wkup_time > 0){
-          pstat->rptime += ticks - p->wkup_time;
-          p->wkup_time = -1;
-        }
-        // duration of the process being in RUNNABLE state
-        pstat->qtime += ticks - p->last_runnable_tick;
-        release(&pstat->lk);
+        _scheduler_record_pstat(p);
         c->proc = p;
         swtch(&c->context, &p->context);
 
