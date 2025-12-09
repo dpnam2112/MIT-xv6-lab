@@ -30,6 +30,91 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
+sched_tracer_t sched_tracer;
+
+void
+sched_tracer_init(sched_tracer_t *st)
+{
+  initlock(&st->lk, "sched_tracer");
+  st->head = 0;
+  st->tail = 0;
+}
+
+// enqueue
+int
+sched_tracer_enq(sched_tracer_t *st, sched_trace_t *trace)
+{
+  int next_head;
+  acquire(&st->lk);
+  next_head = (st->head + 1) % MAX_SCHEDTRACE;
+  if(next_head == st->tail) {
+    release(&st->lk);
+    return -1;
+  }
+  st->sched_traces[st->head] = *trace;
+  st->head = next_head;
+  release(&st->lk);
+  return 0;
+}
+
+// dequeue
+int
+sched_tracer_deq(sched_tracer_t *st, sched_trace_t *out_trace)
+{
+  acquire(&st->lk);
+  if(st->head == st->tail) {
+    release(&st->lk);
+    return -1;
+  }
+  *out_trace = st->sched_traces[st->tail];
+  st->tail = (st->tail + 1) % MAX_SCHEDTRACE;
+  release(&st->lk);
+  return 0;
+}
+
+int
+sched_tracer_isfull(sched_tracer_t *st)
+{
+  int full;
+  acquire(&st->lk);
+  full = ((st->head + 1) % MAX_SCHEDTRACE) == st->tail;
+  release(&st->lk);
+  return full;
+}
+
+int
+sched_tracer_isempty(sched_tracer_t *st)
+{
+  int empty;
+  acquire(&st->lk);
+  empty = (st->head == st->tail);
+  release(&st->lk);
+  return empty;
+}
+
+void
+sched_tracer_flushout(sched_tracer_t *st)
+{
+  acquire(&st->lk);
+  st->head = 0;
+  st->tail = 0;
+  release(&st->lk);
+}
+
+#ifdef SCHEDTRACE
+void
+proc_recordtrace(struct proc *p)
+{
+  sched_trace_t trace = (struct sched_trace){ticks, p->pid, p->state};
+  if (sched_tracer_enq(&sched_tracer, &trace) < 0){
+    // tracer is full, flush out and retry
+    sched_tracer_flushout(&sched_tracer);
+    sched_tracer_enq(&sched_tracer, &trace);
+  }
+}
+#endif
+
+
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
@@ -67,6 +152,7 @@ procinit(void)
       initlock(&pstat->lk, "pstat");
       pstat->pid = -1;
   }
+  sched_tracer_init(&sched_tracer);
 }
 
 // Must be called with interrupts disabled,
@@ -530,6 +616,9 @@ round_robin_scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         _scheduler_record_pstat(p);
+#ifdef SCHEDTRACE
+        proc_recordtrace(p);
+#endif
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -572,6 +661,9 @@ mlfq_scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+#ifdef SCHEDTRACE
+        proc_recordtrace(p);
+#endif
         _scheduler_record_pstat(p);
         c->proc = p;
         swtch(&c->context, &p->context);
@@ -641,6 +733,9 @@ yield(void)
   acquire(&p->lock);
   p->state = RUNNABLE;
   p->last_runnable_tick = ticks;
+#ifdef SCHEDTRACE
+  proc_recordtrace(p);
+#endif
 //  printf("debug: yield ticks=%d pid=%d\n", ticks, p->pid);
   sched();
   release(&p->lock);
@@ -690,6 +785,9 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+#ifdef SCHEDTRACE
+  proc_recordtrace(p);
+#endif
 
   sched();
 
@@ -715,6 +813,9 @@ wakeup(void *chan)
         p->wkup_time = ticks;
         p->last_runnable_tick = ticks;
         p->state = RUNNABLE;
+#ifdef SCHEDTRACE
+        proc_recordtrace(p);
+#endif
       }
       release(&p->lock);
     }
