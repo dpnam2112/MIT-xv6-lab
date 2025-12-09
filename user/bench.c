@@ -4,35 +4,6 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
-// Helper to create "bio_<pid>" without sprintf
-void
-make_unique_name(char *buf, int pid)
-{
-  strcpy(buf, "bench_io_");
-  int len = strlen(buf);
-
-  if(pid == 0){
-    buf[len] = '0';
-    buf[len+1] = 0;
-    return;
-  }
-
-  int temp = pid;
-  int digits = 0;
-  while(temp > 0){
-    temp /= 10;
-    digits++;
-  }
-
-  buf[len + digits] = 0; 
-  
-  for(int i = 0; i < digits; i++){
-    buf[len + digits - 1 - i] = (pid % 10) + '0';
-    pid /= 10;
-  }
-}
-
-
 int
 cputask(int pid, int iter)
 {
@@ -43,7 +14,6 @@ cputask(int pid, int iter)
   for (; i < iter; i++);
   return i; 
 }
-
 
 void
 iotask(int pid){
@@ -64,12 +34,29 @@ iotask(int pid){
     if (i % cp == 0){
       printf("info: iotask pid=%d\n", pid);
     }
-    // do some work
-    cputask(pid, 5000);
+    // do some lightweight work
+    cputask(pid, 2000);
   }
   printf("info: pid=%d done io tasks\n", pid);
 //  close(fd);
 }
+
+void
+mix_workload_task(int pid, int iter)
+{
+  // a real-world example of a workload mixed between computation and io:
+  // - user types in complex formulas in an excel sheet (io)
+  // - user hits enter (io)
+  // - excel computes the result (compute)
+
+  for (int i = 0; i < iter; i++){
+    sleep(3);
+    cputask(pid, 2000000);
+    sleep(5);
+    cputask(pid, 5000000);
+  }
+}
+
 
 void printpstat(struct pstat* pstat){
   printf("==   PSTAT   ==\n");
@@ -84,7 +71,7 @@ void printpstat(struct pstat* pstat){
 int
 main(int argc, char *argv[]){
   if(argc < 3){
-    fprintf(2, "usage: bench [io|cpu] num_of_tasks\n");
+    fprintf(2, "usage: bench [io|cpu|mixed] num_of_procs\n");
     exit(1);
   }
 
@@ -106,7 +93,9 @@ worker:
         int iter = 500000000;
         int res = cputask(pid, iter);
         printf("info: done %d iterations\n", res);
-      } else {
+      } else if (strcmp(workload, "mixed") == 0){
+        mix_workload_task(pid, 50);
+      }else {
         iotask(pid);
 //        printf("info: done io tasks\n");
       }

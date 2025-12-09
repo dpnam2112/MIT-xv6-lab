@@ -600,9 +600,9 @@ mlfq_scheduler(void)
 //    via swtch back to the scheduler.
 #ifdef SCHED_POLICY_MLFQ
 // multilevel feedback queue
-scheduler_t scheduler = round_robin_scheduler;
-#else
 scheduler_t scheduler = mlfq_scheduler;
+#else
+scheduler_t scheduler = round_robin_scheduler;
 #endif
 
 
