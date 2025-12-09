@@ -33,13 +33,20 @@ make_unique_name(char *buf, int pid)
 }
 
 
-int cputask(int pid, int iter){
+int
+cputask(int pid, int iter)
+{
   int i = 0;
+  // The compiler may do dirty tricks, e.g., remove entirely this loop, 
+  // since the loop is meaningless. Hence, I put the return line to ensure 
+  // it won't do such tricks.
   for (; i < iter; i++);
-  return i;
+  return i; 
 }
 
-void iotask(int pid){
+
+void
+iotask(int pid){
 //  char filename[50];
 //  make_unique_name(filename, pid);
 //
