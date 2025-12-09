@@ -362,6 +362,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->last_runnable_tick = ticks;
   release(&np->lock);
 
   return pid;
@@ -512,13 +513,15 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        struct pstat* pstat = proc_getpstat(p->pid);
+        acquire(&pstat->lk);
         if (p->wkup_time > 0){
-          struct pstat* pstat = proc_getpstat(p->pid);
-          acquire(&pstat->lk);
           pstat->rptime += ticks - p->wkup_time;
-          release(&pstat->lk);
           p->wkup_time = -1;
         }
+        // duration of the process being in RUNNABLE state
+        pstat->qtime += ticks - p->last_runnable_tick;
+        release(&pstat->lk);
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -571,6 +574,8 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->last_runnable_tick = ticks;
+//  printf("debug: yield ticks=%d pid=%d\n", ticks, p->pid);
   sched();
   release(&p->lock);
 }
@@ -619,7 +624,6 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-  p->lastsleeptick = ticks;
 
   sched();
 
@@ -643,6 +647,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->wkup_time = ticks;
+        p->last_runnable_tick = ticks;
         p->state = RUNNABLE;
       }
       release(&p->lock);

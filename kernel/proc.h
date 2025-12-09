@@ -110,5 +110,5 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  int lastsleeptick;           // the last tick at which the process starts sleeping
+  int last_runnable_tick;      // the last tick when the process is queued to the runnable queue (is set as runnable)
 };
