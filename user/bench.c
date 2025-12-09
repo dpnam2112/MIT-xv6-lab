@@ -21,16 +21,9 @@ void iotask(int pid){
 
 void cputask(int pid){
   int COUNT = 500000000;
-  int cp = COUNT / 4; // checkpoint
-  int cp2 = COUNT / 2;
-  int cp3 = cp * 3;
-  for (int i = 0; i < COUNT; i++){
-    if (i == cp || i == cp2 || i == cp3){
-      // just to ensure compiler won't do dirty trick
-      printf("info: pid=%d checkpoint=%d\n", pid, i);
-    }
-  }
-  printf("info: pid=%d done %d iterations\n", pid, COUNT);
+  int i = 0;
+  for (; i < COUNT; i++);
+  printf("info: pid=%d done %d iterations\n", pid, i);
 }
 
 void printpstat(struct pstat* pstat){
