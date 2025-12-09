@@ -59,6 +59,7 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
+      p->ongoing = 0;
       p->kstack = KSTACK((int) (p - proc));
   }
 
@@ -211,6 +212,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->ongoing = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -515,6 +517,11 @@ scheduler(void)
         p->state = RUNNING;
         struct pstat* pstat = proc_getpstat(p->pid);
         acquire(&pstat->lk);
+        if (p->ongoing == 0){
+          p->ongoing = 1;
+          pstat->stime = ticks;
+        }
+
         if (p->wkup_time > 0){
           pstat->rptime += ticks - p->wkup_time;
           p->wkup_time = -1;

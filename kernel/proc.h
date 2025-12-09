@@ -95,7 +95,8 @@ struct proc {
   int pid;                     // Process ID
 
   int wkup_time;              // the last time the process is waken up. 
-                               // used to calculate response time
+                              // used to calculate response time
+  uint8 ongoing;              // used to track when the process starts for the first time
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
