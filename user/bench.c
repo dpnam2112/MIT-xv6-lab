@@ -11,10 +11,11 @@ void iotask(int pid){
     return;
   }
   char buf[20] = "hello world";
-  write(fd, buf, strlen(buf));
-  write(fd, buf, strlen(buf));
-  write(fd, buf, strlen(buf));
-  printf("info: pid=%d done io tasks", pid);
+  int ITERATIONS = 100;
+  for (int i = 0; i < ITERATIONS; i++){
+    write(fd, buf, strlen(buf));
+  }
+  printf("info: pid=%d done io tasks\n", pid);
   close(fd);
 }
 
