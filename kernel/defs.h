@@ -10,6 +10,9 @@ struct stat;
 struct superblock;
 struct pstat;
 
+typedef void (*scheduler_t)(void) __attribute__((noreturn));
+
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -97,7 +100,7 @@ struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
 void            procinit(void);
-void            scheduler(void) __attribute__((noreturn));
+extern scheduler_t scheduler;
 void            sched(void);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);

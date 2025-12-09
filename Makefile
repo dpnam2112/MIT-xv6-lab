@@ -106,6 +106,14 @@ CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
+ifeq ($(SCHED_POLICY), rr)
+CFLAGS += -DSCHED_POLICY_RR
+endif
+
+ifeq ($(SCHED_POLICY), mlfq)
+CFLAGS += -DSCHED_POLICY_MLFQ
+endif
+
 ifeq ($(LAB),net)
 CFLAGS += -DNET_TESTS_PORT=$(SERVERPORT)
 endif
