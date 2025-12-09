@@ -4,26 +4,64 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
-void iotask(int pid){
-  int fd = open("bench_io", O_CREATE | O_RDWR);
-  if (fd < 0){
-    printf("error: failed to create a file\n");
+// Helper to create "bio_<pid>" without sprintf
+void
+make_unique_name(char *buf, int pid)
+{
+  strcpy(buf, "bench_io_");
+  int len = strlen(buf);
+
+  if(pid == 0){
+    buf[len] = '0';
+    buf[len+1] = 0;
     return;
   }
-  char buf[20] = "hello world";
-  int ITERATIONS = 100;
-  for (int i = 0; i < ITERATIONS; i++){
-    write(fd, buf, strlen(buf));
+
+  int temp = pid;
+  int digits = 0;
+  while(temp > 0){
+    temp /= 10;
+    digits++;
   }
-  printf("info: pid=%d done io tasks\n", pid);
-  close(fd);
+
+  buf[len + digits] = 0; 
+  
+  for(int i = 0; i < digits; i++){
+    buf[len + digits - 1 - i] = (pid % 10) + '0';
+    pid /= 10;
+  }
 }
 
-void cputask(int pid){
-  int COUNT = 500000000;
+
+int cputask(int pid, int iter){
   int i = 0;
-  for (; i < COUNT; i++);
-  printf("info: pid=%d done %d iterations\n", pid, i);
+  for (; i < iter; i++);
+  return i;
+}
+
+void iotask(int pid){
+//  char filename[50];
+//  make_unique_name(filename, pid);
+//
+//  int fd = open(filename, O_CREATE | O_RDWR);
+//  if (fd < 0){
+//    printf("error: failed to create a file\n");
+//    return;
+//  }
+//
+//  char buf[20] = "hello world";
+  int ITERATIONS = 30;
+  int cp = ITERATIONS / 2; // checkpoint
+  for (int i = 0; i < ITERATIONS; i++){
+    sleep(3);
+    if (i % cp == 0){
+      printf("info: iotask pid=%d\n", pid);
+    }
+    // do some work
+    cputask(pid, 5000);
+  }
+  printf("info: pid=%d done io tasks\n", pid);
+//  close(fd);
 }
 
 void printpstat(struct pstat* pstat){
@@ -58,9 +96,12 @@ worker:
     {
       int pid = getpid();
       if (strcmp(workload, "cpu") == 0){
-        cputask(pid);
+        int iter = 500000000;
+        int res = cputask(pid, iter);
+        printf("info: done %d iterations\n", res);
       } else {
         iotask(pid);
+//        printf("info: done io tasks\n");
       }
     }
     exit(0);
