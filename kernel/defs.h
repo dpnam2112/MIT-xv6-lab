@@ -9,6 +9,8 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct pstat;
+struct sched_trace;
+struct sched_tracer;
 
 typedef void (*scheduler_t)(void) __attribute__((noreturn));
 
@@ -111,6 +113,8 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 struct pstat*   proc_getpstat(int);
+int             sched_tracer_enq(struct sched_tracer*, struct sched_trace*);
+int             sched_tracer_deq(struct sched_tracer*, struct sched_trace*);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

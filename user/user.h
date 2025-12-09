@@ -1,5 +1,6 @@
 struct stat;
 struct pstat;
+struct sched_trace_t;
 
 // system calls
 int fork(void);
@@ -24,6 +25,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int getpstat(int, struct pstat*);
+int schedtrace(sched_trace_t*, int);
 
 // ulib.c
 int stat(const char*, struct stat*);

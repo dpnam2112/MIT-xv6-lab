@@ -109,3 +109,34 @@ sys_getpstat(void)
   }
   return 0;
 }
+
+extern sched_tracer_t sched_tracer;
+
+// int schedtrace(sched_trace_t*)
+// a simple utility system call to get scheduler traces.
+// return the number of records copied to user-space array 
+uint
+sys_schedtrace(void)
+{
+  uint64 u_trace_arr; // array of trace record in user space
+  int arrsz;
+  argaddr(0, &u_trace_arr);
+  argint(1, &arrsz);
+  if (u_trace_arr == 0){
+    return -1;
+  }
+  int i;
+  struct proc *p = myproc();
+  for (i = 0; i < arrsz; i++){
+    sched_trace_t trace;
+    int res = sched_tracer_deq(&sched_tracer, &trace);
+    if (res < 0){
+      break;
+    }
+
+    if (copyout(p->pagetable, (uint64) ((sched_trace_t*) u_trace_arr + i), (char*) &trace, sizeof(sched_trace_t)) < 0){
+      panic("schedtrace");
+    }
+  }
+  return i;
+}

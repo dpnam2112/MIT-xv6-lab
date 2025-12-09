@@ -115,12 +115,15 @@ struct proc {
 };
 
 #define MAX_SCHEDTRACE 910 // equals 2 physical pages (4 KiB * 2)
+enum schedtrace_type { SCHEDTRACE_PROC_STATE_CHANGE, SCHEDTRACE_PRIO_CHANGE };
 
 typedef struct sched_trace
 {
   int tick;                   // when this trace was recorded
   int pid;                    // current pid
   enum procstate pstate;      // current process's state
+  int prio;                   // priority. used in priority-based policies like mlfq
+  enum schedtrace_type type;
 } sched_trace_t;
 
 // a simple circular queue containing scheduler trace records.

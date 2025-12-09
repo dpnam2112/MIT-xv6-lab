@@ -42,7 +42,7 @@ sched_tracer_init(sched_tracer_t *st)
 
 // enqueue
 int
-sched_tracer_enq(sched_tracer_t *st, sched_trace_t *trace)
+sched_tracer_enq(struct sched_tracer *st, struct sched_trace *trace)
 {
   int next_head;
   acquire(&st->lk);
@@ -59,7 +59,7 @@ sched_tracer_enq(sched_tracer_t *st, sched_trace_t *trace)
 
 // dequeue
 int
-sched_tracer_deq(sched_tracer_t *st, sched_trace_t *out_trace)
+sched_tracer_deq(struct sched_tracer *st, struct sched_trace *out_trace)
 {
   acquire(&st->lk);
   if(st->head == st->tail) {
@@ -73,7 +73,7 @@ sched_tracer_deq(sched_tracer_t *st, sched_trace_t *out_trace)
 }
 
 int
-sched_tracer_isfull(sched_tracer_t *st)
+sched_tracer_isfull(struct sched_tracer *st)
 {
   int full;
   acquire(&st->lk);
@@ -83,7 +83,7 @@ sched_tracer_isfull(sched_tracer_t *st)
 }
 
 int
-sched_tracer_isempty(sched_tracer_t *st)
+sched_tracer_isempty(struct sched_tracer *st)
 {
   int empty;
   acquire(&st->lk);

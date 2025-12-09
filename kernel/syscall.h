@@ -21,3 +21,7 @@
 #define SYS_mkdir  20
 #define SYS_close  21
 #define SYS_getpstat  22
+
+#ifdef SCHEDTRACE
+#define SYS_schedtrace 23
+#endif
