@@ -112,26 +112,5 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   int last_runnable_tick;      // the last tick when the process is queued to the runnable queue (is set as runnable)
+  uint8 prio;                  // priority, used for priority-based scheduling policies
 };
-
-#define MAX_SCHEDTRACE 910 // equals 2 physical pages (4 KiB * 2)
-enum schedtrace_type { SCHEDTRACE_PROC_STATE_CHANGE, SCHEDTRACE_PRIO_CHANGE };
-
-typedef struct sched_trace
-{
-  int tick;                   // when this trace was recorded
-  int pid;                    // current pid
-  enum procstate pstate;      // current process's state
-  int prio;                   // priority. used in priority-based policies like mlfq
-  enum schedtrace_type type;
-} sched_trace_t;
-
-// a simple circular queue containing scheduler trace records.
-typedef struct sched_tracer
-{
-  sched_trace_t sched_traces[MAX_SCHEDTRACE];
-  struct spinlock lk;
-  int head;
-  int tail;
-} sched_tracer_t;
-

@@ -114,6 +114,10 @@ ifeq ($(SCHED_POLICY), mlfq)
 CFLAGS += -DSCHED_POLICY_MLFQ
 endif
 
+ifeq ($(SCHEDTRACE), true)
+CFLAGS += -DSCHEDTRACE
+endif
+
 ifeq ($(LAB),net)
 CFLAGS += -DNET_TESTS_PORT=$(SERVERPORT)
 endif

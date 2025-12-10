@@ -1,2 +1,3 @@
 LAB=util
 SCHED_POLICY=rr
+SCHEDTRACE=true

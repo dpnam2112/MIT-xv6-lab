@@ -37,4 +37,4 @@ entry("sbrk");
 entry("sleep");
 entry("uptime");
 entry("getpstat");
-entry("schedtrace")
+entry("schedtrace");

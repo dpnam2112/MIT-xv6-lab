@@ -6,6 +6,7 @@
 #include "spinlock.h"
 #include "pstat.h"
 #include "proc.h"
+#include "schedtrace.h"
 
 uint64
 sys_exit(void)
@@ -110,14 +111,16 @@ sys_getpstat(void)
   return 0;
 }
 
-extern sched_tracer_t sched_tracer;
+extern struct sched_tracer sched_tracer;
 
 // int schedtrace(sched_trace_t*)
 // a simple utility system call to get scheduler traces.
 // return the number of records copied to user-space array 
+// if the macro SCHEDTRACE is not defined, the system call becomes no-op
 uint
 sys_schedtrace(void)
 {
+#ifdef SCHEDTRACE
   uint64 u_trace_arr; // array of trace record in user space
   int arrsz;
   argaddr(0, &u_trace_arr);
@@ -128,15 +131,20 @@ sys_schedtrace(void)
   int i;
   struct proc *p = myproc();
   for (i = 0; i < arrsz; i++){
-    sched_trace_t trace;
+    struct sched_trace trace;
     int res = sched_tracer_deq(&sched_tracer, &trace);
     if (res < 0){
       break;
     }
 
-    if (copyout(p->pagetable, (uint64) ((sched_trace_t*) u_trace_arr + i), (char*) &trace, sizeof(sched_trace_t)) < 0){
+    uint schedtrace_size = sizeof(struct sched_trace);
+
+    if (copyout(p->pagetable, (uint64) (u_trace_arr + i * schedtrace_size), (char*) &trace, schedtrace_size) < 0){
       panic("schedtrace");
     }
   }
   return i;
+#else
+  return 0; // no-op
+#endif
 }

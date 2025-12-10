@@ -3,6 +3,43 @@
 #include "kernel/pstat.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
+#include "kernel/schedtrace.h"
+
+// from FreeBSD.
+int
+do_rand(unsigned long *ctx)
+{
+/*
+ * Compute x = (7^5 * x) mod (2^31 - 1)
+ * without overflowing 31 bits:
+ *      (2^31 - 1) = 127773 * (7^5) + 2836
+ * From "Random number generators: good ones are hard to find",
+ * Park and Miller, Communications of the ACM, vol. 31, no. 10,
+ * October 1988, p. 1195.
+ */
+    long hi, lo, x;
+
+    /* Transform to [1, 0x7ffffffe] range. */
+    x = (*ctx % 0x7ffffffe) + 1;
+    hi = x / 127773;
+    lo = x % 127773;
+    x = 16807 * lo - 2836 * hi;
+    if (x < 0)
+        x += 0x7fffffff;
+    /* Transform to [0, 0x7ffffffd] range. */
+    x--;
+    *ctx = x;
+    return (x);
+}
+
+unsigned long rand_next = 1;
+
+int
+rand(void)
+{
+    return (do_rand(&rand_next));
+}
+
 
 int
 cputask(int pid, int iter)
@@ -27,17 +64,12 @@ iotask(int pid){
 //  }
 //
 //  char buf[20] = "hello world";
-  int ITERATIONS = 30;
-  int cp = ITERATIONS / 2; // checkpoint
+  int ITERATIONS = 5;
   for (int i = 0; i < ITERATIONS; i++){
-    sleep(3);
-    if (i % cp == 0){
-      printf("info: iotask pid=%d\n", pid);
-    }
+    sleep(rand() % 6 + 2);
     // do some lightweight work
-    cputask(pid, 2000);
+    cputask(pid, 1000000000);
   }
-  printf("info: pid=%d done io tasks\n", pid);
 //  close(fd);
 }
 
@@ -59,14 +91,17 @@ mix_workload_task(int pid, int iter)
 
 
 void printpstat(struct pstat* pstat){
-  printf("==   PSTAT   ==\n");
-  printf("pid = %d\n", pstat->pid);
-  printf("stime = %u\n", (int) pstat->stime);
-  printf("etime = %d\n", (int) pstat->etime);
-  printf("rptime = %d\n", (int) pstat->rptime);
-  printf("qtime = %d\n", (int) pstat->qtime);
-  printf("== END PSTAT ==\n");
+  printf("pstat: pid=%d stime=%u etime=%d rptime=%d qtime=%d\n",
+    pstat->pid,
+    (int) pstat->stime,
+    (int) pstat->etime,
+    (int) pstat->rptime,
+    (int) pstat->qtime
+  );
 }
+
+const int schedtrace_size = 1000;
+struct sched_trace schedtraces[1000];
 
 int
 main(int argc, char *argv[]){
@@ -94,7 +129,12 @@ worker:
         int res = cputask(pid, iter);
         printf("info: done %d iterations\n", res);
       } else if (strcmp(workload, "mixed") == 0){
-        mix_workload_task(pid, 50);
+        if (rand() % 2 == 0){
+          int iter = 50000000;
+          cputask(pid, iter);
+        } else {
+          iotask(pid);
+        }
       }else {
         iotask(pid);
 //        printf("info: done io tasks\n");
@@ -112,5 +152,16 @@ worker:
     printpstat(&pstat);
   }
 
+  int ntraces;
+  while ((ntraces = schedtrace(schedtraces, schedtrace_size)) < 0){
+    printf("error: schedtrace\n");
+    exit(1);
+  }
+
+  for (struct sched_trace *trace = schedtraces; trace < schedtraces + ntraces; trace++){
+    printf("trace: tick=%d pid=%d state=%d prio=%d event=%d\n", trace->tick, trace->pid, trace->pstate, trace->prio, trace->type);
+  }
+
+  printf("# traces total: %d\n", ntraces);
   exit(0);
 }

@@ -6,6 +6,7 @@
 #include "pstat.h"
 #include "proc.h"
 #include "defs.h"
+#include "schedtrace.h"
 
 struct cpu cpus[NCPU];
 
@@ -30,10 +31,10 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
-sched_tracer_t sched_tracer;
+struct sched_tracer sched_tracer;
 
 void
-sched_tracer_init(sched_tracer_t *st)
+sched_tracer_init(struct sched_tracer *st)
 {
   initlock(&st->lk, "sched_tracer");
   st->head = 0;
@@ -72,28 +73,8 @@ sched_tracer_deq(struct sched_tracer *st, struct sched_trace *out_trace)
   return 0;
 }
 
-int
-sched_tracer_isfull(struct sched_tracer *st)
-{
-  int full;
-  acquire(&st->lk);
-  full = ((st->head + 1) % MAX_SCHEDTRACE) == st->tail;
-  release(&st->lk);
-  return full;
-}
-
-int
-sched_tracer_isempty(struct sched_tracer *st)
-{
-  int empty;
-  acquire(&st->lk);
-  empty = (st->head == st->tail);
-  release(&st->lk);
-  return empty;
-}
-
 void
-sched_tracer_flushout(sched_tracer_t *st)
+sched_tracer_flushout(struct sched_tracer *st)
 {
   acquire(&st->lk);
   st->head = 0;
@@ -103,13 +84,11 @@ sched_tracer_flushout(sched_tracer_t *st)
 
 #ifdef SCHEDTRACE
 void
-proc_recordtrace(struct proc *p)
+proc_recordtrace(struct proc *p, uint tracetype)
 {
-  sched_trace_t trace = (struct sched_trace){ticks, p->pid, p->state};
+  struct sched_trace trace = (struct sched_trace){ticks, p->pid, p->state, p->prio, tracetype};
   if (sched_tracer_enq(&sched_tracer, &trace) < 0){
-    // tracer is full, flush out and retry
-    sched_tracer_flushout(&sched_tracer);
-    sched_tracer_enq(&sched_tracer, &trace);
+    panic("proc_recordtrace");
   }
 }
 #endif
@@ -245,6 +224,9 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->wkup_time = -1;
+#ifdef SCHEDTRACE
+  proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
+#endif
 
   allocpstat(p->pid);
   struct pstat* pstat = proc_getpstat(p->pid);
@@ -298,6 +280,9 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+#ifdef SCHEDTRACE
+        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
+#endif
   p->ongoing = 0;
 }
 
@@ -450,6 +435,9 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+#ifdef SCHEDTRACE
+        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
+#endif
   np->last_runnable_tick = ticks;
   release(&np->lock);
 
@@ -592,7 +580,7 @@ _scheduler_record_pstat(struct proc *p)
   release(&pstat->lk);
 }
 
-// scheduler_t _round_robin_scheduler
+// scheduler_t round_robin_scheduler
 void __attribute__((noreturn))
 round_robin_scheduler(void)
 {
@@ -617,7 +605,7 @@ round_robin_scheduler(void)
         p->state = RUNNING;
         _scheduler_record_pstat(p);
 #ifdef SCHEDTRACE
-        proc_recordtrace(p);
+        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
         c->proc = p;
         swtch(&c->context, &p->context);
@@ -662,7 +650,7 @@ mlfq_scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
 #ifdef SCHEDTRACE
-        proc_recordtrace(p);
+        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
         _scheduler_record_pstat(p);
         c->proc = p;
@@ -734,7 +722,7 @@ yield(void)
   p->state = RUNNABLE;
   p->last_runnable_tick = ticks;
 #ifdef SCHEDTRACE
-  proc_recordtrace(p);
+  proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
 //  printf("debug: yield ticks=%d pid=%d\n", ticks, p->pid);
   sched();
@@ -786,7 +774,7 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 #ifdef SCHEDTRACE
-  proc_recordtrace(p);
+  proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
 
   sched();
@@ -814,7 +802,7 @@ wakeup(void *chan)
         p->last_runnable_tick = ticks;
         p->state = RUNNABLE;
 #ifdef SCHEDTRACE
-        proc_recordtrace(p);
+        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
       }
       release(&p->lock);
@@ -837,6 +825,9 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+#ifdef SCHEDTRACE
+        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
+#endif
       }
       release(&p->lock);
       return 0;
