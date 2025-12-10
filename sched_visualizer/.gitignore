@@ -1,0 +1,59 @@
+# =================================================================
+# 1. uv/Virtual Environment
+# =================================================================
+
+# The standard name for Python virtual environment folders.
+# This is the most critical item to ignore.
+.venv/
+venv/
+env/
+*venv*
+# uv itself may use a cache, though it often uses the environment folder
+
+# =================================================================
+# 2. Python Bytecode, Compilation, and Testing
+# =================================================================
+
+# Compiled Python files (bytecode), generated when Python runs.
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg
+
+# Testing and Coverage
+.pytest_cache/
+.coverage
+
+# =================================================================
+# 3. Operating System / Editor Files
+# =================================================================
+
+# macOS system files
+.DS_Store
+
+# Windows thumbnail cache and recycling bin files
+Thumbs.db
+ehthumbs.db
+
+# Standard IDE (Integrated Development Environment) files
+.idea/        # JetBrains IDEs (PyCharm, IntelliJ)
+.vscode/      # VS Code specific settings/launch files (can be kept if shared)
+# The line below ignores specific user settings within VS Code
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history
+
+# =================================================================
+# 4. Distribution and Packaging
+# =================================================================
+
+# Source distribution archives (tar.gz, zip)
+dist/
+build/
+*.egg-info/
+
+*.png
+*.log
