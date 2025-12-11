@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "schedtrace.h"
+#include "mlfq.h"
 
 struct cpu cpus[NCPU];
 
@@ -281,7 +282,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
 #ifdef SCHEDTRACE
-        proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
+  proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
   p->ongoing = 0;
 }
@@ -625,51 +626,127 @@ round_robin_scheduler(void)
   }
 }
 
+#define SCHED_POLICY_MLFQ
+
+#ifdef SCHED_POLICY_MLFQ
+#ifndef MLFQ_MAX_PRIO
+#define MLFQ_MAX_PRIO 19
+#endif
+
+// lowest priority is 0
+static struct mlfq_task_queue mlfq_task_queues[MLFQ_MAX_PRIO + 1];
+
+void
+mlfq_demote(struct mlfq_task_queue queues[MLFQ_MAX_PRIO + 1], struct proc *p){
+  // dequeue the task from the task queue first before calling this
+  if (p->state != RUNNING){
+    panic("mlfq_set_prio: process' state must be RUNNING");
+  }
+  int new_prio = p->prio - 1;
+  if (new_prio < 0){
+    new_prio = 0;
+  }
+
+  struct mlfq_task_queue *q = &queues[new_prio];
+  if (mlfq_task_queue_enq(q, p) != 0){
+    panic("mlfq_demote");
+  }
+}
+
+void
+mlfq_reset()
+{
+  // reset all queues
+  for (struct mlfq_task_queue *q = mlfq_task_queues; mlfq_task_queues + MLFQ_MAX_PRIO; q++){
+    mlfq_task_queue_init(q);
+  }
+
+  struct mlfq_task_queue *highest_q = &mlfq_task_queues[MLFQ_MAX_PRIO]; 
+  // promote all processes to the highest priority
+  for (struct proc *p = proc; p < proc + NPROC; p++){
+    acquire(&p->lock);
+    if (p->state == RUNNABLE && mlfq_task_queue_enq(highest_q, p) != 0){
+      panic("mlfq_reset");
+    }
+    p->prio = MLFQ_MAX_PRIO;
+    release(&p->lock);
+  }
+}
+
+
 // scheduler_t _mlfq_scheduler
-// stub for multilevel feedback queue implementation
+// implementation of multilevel feedback queue.
+// NOTE: currently, the implementation only works for single-core cpu.
+// it has not yet to be tested/implemented for multi-core cpu.
 void  __attribute__((noreturn))
 mlfq_scheduler(void)
 {
   printf("scheduler: use policy mlfq\n");
-  struct proc *p;
   struct cpu *c = mycpu();
+  mlfq_reset();
 
-  c->proc = 0;
-  for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting.
-    intr_on();
+  for (;;){
+    struct proc *p;
+    for (int prio = MLFQ_MAX_PRIO; prio > -1; prio--){
+      struct mlfq_task_queue *task_q = &mlfq_task_queues[prio];
+      p = mlfq_task_queue_deq(task_q);
+      if (p != 0){
+        break;
+      }
+    }
 
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
+    acquire(&p->lock);
+
+    // invariant: mlfq only contains RUNNABLE tasks
+    // SLEEPING, RUNNING tasks are only enqueued when their states switch to RUNNABLE.
+    if (p->state != RUNNABLE){
+      panic("mlfq_scheduler");
+    }
+
+    c->proc = p;
+
+    int quota = p->prio / 3;
+    if (quota < 1){
+      quota = 1;
+    }
+
+    // cpu continues the chosen task until the task is out of quota
+    do {
+      p->state = RUNNING;
+      _scheduler_record_pstat(p);
 #ifdef SCHEDTRACE
         proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
-        _scheduler_record_pstat(p);
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+      swtch(&c->context, &p->context);
+      if (p->state == SLEEPING){
+        // TODO: update logic in wakeup, enqueue the process to the queue
+        break;
+      } else if (p->state == RUNNABLE){
+        quota--;
+        continue;
       }
-      release(&p->lock);
+    } while (quota > 0);
+
+    // from this point, p->state should be RUNNABLE
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+    
+    // reset the mlfq, i.e., promote all tasks to the highest priority,
+    // after N ticks to avoid starvation for low-priority tasks
+    if (ticks % MLFQ_RESET_QUANTUM == 0){
+      mlfq_reset();
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      intr_on();
-      asm volatile("wfi");
-    }
+
+    // users can game the scheduler, e.g. do tricks to make their processes become interactive to the
+    // scheduler while they are compute-bound to consume cpu time resource.
+    mlfq_demote(mlfq_task_queues, p);
+    
+    release(&p->lock);
   }
 };
+#endif
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.

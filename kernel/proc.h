@@ -112,5 +112,5 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   int last_runnable_tick;      // the last tick when the process is queued to the runnable queue (is set as runnable)
-  uint8 prio;                  // priority, used for priority-based scheduling policies
+  int prio;                    // priority, used for priority-based scheduling policies
 };
