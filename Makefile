@@ -30,7 +30,8 @@ OBJS = \
   $K/sysfile.o \
   $K/kernelvec.o \
   $K/plic.o \
-  $K/virtio_disk.o
+  $K/virtio_disk.o \
+  $K/mlfq.o
 
 OBJS_KCSAN = \
   $K/start.o \
@@ -107,11 +108,11 @@ CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
 ifeq ($(SCHED_POLICY), rr)
-CFLAGS += -DSCHED_POLICY_RR
+CFLAGS += -DSCHED_POLICY=SCHED_POLICY_RR
 endif
 
 ifeq ($(SCHED_POLICY), mlfq)
-CFLAGS += -DSCHED_POLICY_MLFQ
+CFLAGS += -DSCHED_POLICY=SCHED_POLICY_MLFQ
 endif
 
 ifeq ($(SCHEDTRACE), true)

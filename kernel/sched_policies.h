@@ -1,0 +1,2 @@
+#define SCHED_POLICY_RR 0
+#define SCHED_POLICY_MLFQ 1

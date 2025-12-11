@@ -1,7 +1,6 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
 #include "user/user.h"
-#include <sys/types.h>
 
 
 int
@@ -19,7 +18,7 @@ main(int argc, char *argv[])
   char signal = '0';
   char buf[1];
 
-  pid_t pid = fork();
+  int pid = fork();
 
   if (pid == 0) {
     // Child process

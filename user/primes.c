@@ -1,6 +1,5 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
-#include <sys/types.h>
 #include "user/user.h"
 
 
@@ -14,14 +13,14 @@ int right_pipe[2] = {-1, -1};
 
 
 void
-log_receive(pid_t pid, int num) {
+log_receive(int pid, int num) {
 #ifdef LOG
   printf("[DEBUG] process %d receives number %d.\n", pid, num);
 #endif
 }
 
 void
-log_send(pid_t pid, pid_t child, int num) {
+log_send(int pid, int child, int num) {
 #ifdef LOG
   printf("[DEBUG] process %d sends number %d to %d.\n", pid, num, child);
 #endif
@@ -29,7 +28,7 @@ log_send(pid_t pid, pid_t child, int num) {
 
 
 void
-log_fork(pid_t parent, pid_t child) {
+log_fork(int parent, int child) {
 #ifdef LOG
   printf("[DEBUG] process %d create a new process, pid=%d\n", parent, child);
 #endif
@@ -58,7 +57,7 @@ void worker() {
   int num = 0;
   int n;
   int printed = false;
-  pid_t right_neighbor_pid = -1;
+  int right_neighbor_pid = -1;
 
   // no need tow write to the left pipe
 
@@ -89,7 +88,7 @@ void worker() {
         exit(1);
       }
 
-      pid_t pid = fork();
+      int pid = fork();
       if (pid == 0) {
         // sleep(1);
         // right neighbor process

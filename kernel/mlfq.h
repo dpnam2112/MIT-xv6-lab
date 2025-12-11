@@ -1,5 +1,7 @@
 #include "param.h"
 
+// configurations for multi-level feedback quueue
+// these can be passed during compile time (-D flags)
 #ifndef MLFQ_MAX_PRIO
 #define MLFQ_MAX_PRIO 19 // lowest priority is 0
 #endif
