@@ -105,13 +105,16 @@ struct sched_trace schedtraces[1000];
 
 int
 main(int argc, char *argv[]){
-  if(argc < 3){
-    fprintf(2, "usage: bench [io|cpu|mixed] num_of_procs\n");
+  if(argc < 4){
+    fprintf(2, "usage: bench [io|cpu|mixed] num_of_procs [t|f]\n");
+    fprintf(2, "if the final param is set to 't', tracing is enabled. useful for debugging.\n");
     exit(1);
   }
 
   char *workload = argv[1];
   char *ntask_param = argv[2];
+  uint trace_enabled = argv[3][0] == 't';
+
   int NTASKS = atoi(ntask_param);
   int pids[NTASKS];
 
@@ -152,16 +155,18 @@ worker:
     printpstat(&pstat);
   }
 
-  int ntraces;
-  while ((ntraces = schedtrace(schedtraces, schedtrace_size)) < 0){
-    printf("error: schedtrace\n");
-    exit(1);
-  }
+  if (trace_enabled){
+    int ntraces;
+    while ((ntraces = schedtrace(schedtraces, schedtrace_size)) < 0){
+      printf("error: schedtrace\n");
+      exit(1);
+    }
 
-  for (struct sched_trace *trace = schedtraces; trace < schedtraces + ntraces; trace++){
-    printf("trace: tick=%d pid=%d state=%d prio=%d event=%d\n", trace->tick, trace->pid, trace->pstate, trace->prio, trace->type);
-  }
+    for (struct sched_trace *trace = schedtraces; trace < schedtraces + ntraces; trace++){
+      printf("trace: tick=%d pid=%d state=%d prio=%d event=%d\n", trace->tick, trace->pid, trace->pstate, trace->prio, trace->type);
+    }
 
-  printf("# traces total: %d\n", ntraces);
+    printf("# traces total: %d\n", ntraces);
+  }
   exit(0);
 }
