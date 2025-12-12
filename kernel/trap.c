@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sched_policies.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -77,8 +78,19 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+#if SCHED_POLICY == SCHED_POLICY_MLFQ
+    p->mlfq_quota--;
+    if (p->mlfq_quota == 0){
+      // out of quota, return the control back to the scheduler
+      yield();
+    }
+#elif SCHED_POLICY == SCHED_POLICY_RR
     yield();
+#else
+  #error "unknown scheduling policy"
+#endif
+  }
 
   usertrapret();
 }

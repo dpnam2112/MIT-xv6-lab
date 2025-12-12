@@ -7,13 +7,17 @@
 #include "proc.h"
 #include "defs.h"
 #include "schedtrace.h"
-#include "mlfq.h"
 #include "sched_policies.h"
+#include "mlfq.h"
+
 
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
-#define PSTAT_ARR_SIZE 256
+
+// a simple implementation to record process stat
+// the size is set so that it's enough to pass usertests
+#define PSTAT_ARR_SIZE (1 << 16)
 struct pstat pstats[PSTAT_ARR_SIZE];
 
 struct proc *initproc;
@@ -113,6 +117,9 @@ proc_mapstacks(pagetable_t kpgtbl)
   }
 }
 
+// hook listening for the event process' state changing to RUNNABLE
+void proc_runnable_hook(struct proc*);
+
 // initialize the proc table.
 void
 procinit(void)
@@ -122,6 +129,11 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   initlock(&pstats_lock, "pstats_lock");
   initlock(&wait_lock, "wait_lock");
+
+#if SCHED_POLICY == SCHED_POLICY_MLFQ
+  mlfq_init();
+#endif
+
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
@@ -366,8 +378,9 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
+  // TODO(refactor): we can define a function specifically for state switching logic
   p->state = RUNNABLE;
-
+  proc_runnable_hook(p);
   release(&p->lock);
 }
 
@@ -436,13 +449,17 @@ fork(void)
   release(&wait_lock);
 
   acquire(&np->lock);
+#if SCHED_POLICY == SCHED_POLICY_MLFQ
+  np->prio = MLFQ_MAX_PRIO;
+#endif
+
   np->state = RUNNABLE;
+  proc_runnable_hook(np);
 #ifdef SCHEDTRACE
         proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
-  np->last_runnable_tick = ticks;
-  release(&np->lock);
 
+  release(&np->lock);
   return pid;
 }
 
@@ -564,7 +581,7 @@ wait(uint64 addr)
 }
 
 void
-_scheduler_record_pstat(struct proc *p)
+record_pstat(struct proc *p)
 {
   struct pstat* pstat = proc_getpstat(p->pid);
   acquire(&pstat->lk);
@@ -582,148 +599,7 @@ _scheduler_record_pstat(struct proc *p)
   release(&pstat->lk);
 }
 
-
 #if SCHED_POLICY == SCHED_POLICY_MLFQ
-// lowest priority is 0
-static struct mlfq_task_queue mlfq_task_queues[MLFQ_MAX_PRIO + 1];
-
-// set the state of the process to RUNNABLE and demote it to the lower priority
-// process' status must be RUNNING before this logic is invoked
-void
-mlfq_demote(struct mlfq_task_queue queues[MLFQ_MAX_PRIO + 1], struct proc *p){
-  // dequeue the task from the task queue first before calling this
-  if (p->state != RUNNING){
-    panic("mlfq_set_prio: process' state must be RUNNING");
-  }
-  int new_prio = p->prio - 1;
-  p->state = RUNNABLE;
-  if (new_prio < 0){
-    new_prio = 0;
-  }
-
-  struct mlfq_task_queue *q = &queues[new_prio];
-  if (mlfq_task_queue_enq(q, p) != 0){
-    panic("mlfq_demote");
-  }
-}
-
-void
-mlfq_reset()
-{
-  // reset all queues
-  for (struct mlfq_task_queue *q = mlfq_task_queues; q < mlfq_task_queues + MLFQ_MAX_PRIO; q++){
-    mlfq_task_queue_init(q);
-  }
-
-  struct mlfq_task_queue *highest_q = &mlfq_task_queues[MLFQ_MAX_PRIO]; 
-  // promote all processes to the highest priority
-  for (struct proc *p = proc; p < proc + NPROC; p++){
-    acquire(&p->lock);
-    if (!(p->state == RUNNABLE || p->state == RUNNING || p->state == SLEEPING)){
-      release(&p->lock);
-      continue;
-    }
-
-    p->prio = MLFQ_MAX_PRIO;
-    // only enqueue the RUNNABLE tasks here to maintain the invariant
-    if (p->state == RUNNABLE && mlfq_task_queue_enq(highest_q, p) != 0){
-      panic("mlfq_reset");
-    }
-    release(&p->lock);
-  }
-}
-
-
-// scheduler_t mlfq_scheduler
-// implementation of multilevel feedback queue.
-// NOTE: currently, the implementation only works for single-core cpu.
-// it has not yet to be tested/implemented for multi-core cpu.
-void  __attribute__((noreturn))
-mlfq_scheduler(void)
-{
-  printf("scheduler: use policy mlfq\n");
-  struct cpu *c = mycpu();
-  mlfq_reset();
-
-  for (;;){
-    // reset the mlfq, i.e., promote all tasks to the highest priority,
-    // after N ticks to avoid starvation for low-priority tasks
-    if (ticks % MLFQ_RESET_QUANTUM == 0){
-      mlfq_reset();
-    }
-    
-    struct proc *p = 0;
-    for (int prio = MLFQ_MAX_PRIO; prio > -1; prio--){
-      struct mlfq_task_queue *task_q = &mlfq_task_queues[prio];
-      p = mlfq_task_queue_deq(task_q);
-      if (p != 0){
-        acquire(&p->lock);
-
-        // invariant: mlfq only contains RUNNABLE tasks
-        // SLEEPING, RUNNING tasks are only enqueued when their states switch to RUNNABLE.
-        if (p->state != RUNNABLE){
-          panic("mlfq_scheduler");
-        }
-
-        c->proc = p;
-
-        // a simple way to pick a quota (time limit that a task can use a cpu, at a given prio)
-        // the higher priority is => the longer quota
-        int quota = p->prio / 4;
-        if (quota < 1){
-          quota = 1;
-        }
-
-        // cpu continues the chosen task until the task is out of quota
-        do {
-          p->state = RUNNING;
-          _scheduler_record_pstat(p);
-#ifdef SCHEDTRACE
-            proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
-#endif
-          swtch(&c->context, &p->context);
-          if (p->state == SLEEPING){
-            // TODO: update logic in wakeup, enqueue the process to the queue
-            break;
-          } else if (p->state == RUNNABLE){
-            quota--;
-            continue;
-          }
-        } while (quota > 0);
-
-        // from this point, p->state should be RUNNABLE
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        
-        // users can game the scheduler, e.g. do tricks to make their processes become interactive to the
-        // scheduler while they are compute-bound to consume cpu time resource.
-        mlfq_demote(mlfq_task_queues, p);
-        
-        release(&p->lock);
-
-        // rerun from the highest priority
-        break;
-      }
-    }
-
-    // enter power-saving state and wait for an interrupt
-    if (p == 0){
-      intr_on();
-      asm volatile("wfi");
-    }
-  }
-};
-
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-// multilevel feedback queue
 scheduler_t scheduler = mlfq_scheduler;
 #elif SCHED_POLICY == SCHED_POLICY_RR
 // scheduler_t round_robin_scheduler
@@ -749,7 +625,7 @@ round_robin_scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
-        _scheduler_record_pstat(p);
+        record_pstat(p);
 #ifdef SCHEDTRACE
         proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
@@ -810,12 +686,19 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+#if SCHED_POLICY == SCHED_POLICY_MLFQ
+  // users can game the scheduler, e.g. do tricks to make their processes become interactive to the
+  // scheduler while they are compute-bound to consume cpu time resource.
+  mlfq_demote(p);
+#endif
+
   p->state = RUNNABLE;
-  p->last_runnable_tick = ticks;
+  proc_runnable_hook(p);
+
 #ifdef SCHEDTRACE
   proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
-//  printf("debug: yield ticks=%d pid=%d\n", ticks, p->pid);
+
   sched();
   release(&p->lock);
 }
@@ -892,16 +775,9 @@ wakeup(void *chan)
         p->wkup_time = ticks;
         p->last_runnable_tick = ticks;
         p->state = RUNNABLE;
+        proc_runnable_hook(p);
 #ifdef SCHEDTRACE
         proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
-#endif
-
-      // TODO: a way to polish this logic is using function pointers as hooks
-#if SCHED_POLICY == SCHED_POLICY_MLFQ
-        struct mlfq_task_queue *q = &mlfq_task_queues[p->prio];
-        if (mlfq_task_queue_enq(q, p) != 0){
-          panic("wakeup");
-        }
 #endif
       }
       release(&p->lock);
@@ -924,6 +800,7 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        proc_runnable_hook(p);
 #ifdef SCHEDTRACE
         proc_recordtrace(p, SCHEDTRACE_PROC_STATE_CHANGE);
 #endif
@@ -1024,4 +901,17 @@ proc_getpstat(int pid){
   }
   release(&pst->lk);
   return pst;
+}
+
+
+// triggered when process' state changes to RUNNABLE
+// p->lock must be acquired first, and,
+// hook should be called synchronously in the caller's execution thread.
+void
+proc_runnable_hook(struct proc *p)
+{
+#if SCHED_POLICY == SCHED_POLICY_MLFQ
+  mlfq_enq(p);
+#endif
+  p->last_runnable_tick = ticks;
 }

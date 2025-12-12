@@ -83,6 +83,8 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+typedef void (*proc_runnable_hook_t)(struct proc*);
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -113,4 +115,5 @@ struct proc {
 
   int last_runnable_tick;      // the last tick when the process is queued to the runnable queue (is set as runnable)
   int prio;                    // priority, used for priority-based scheduling policies
+  int mlfq_quota;
 };

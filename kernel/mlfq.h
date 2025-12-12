@@ -10,20 +10,24 @@
 #define MLFQ_RESET_QUANTUM 100
 #endif
 
+#define MLFQ_PER_QUEUE_SIZE NPROC
+
 struct mlfq_task_queue
 {
+  struct spinlock lk;
   struct proc *tasks[NPROC];
   int head;
   int tail;
 };
 
-// initialize a task queue
+void mlfq_init();
+void mlfq_demote(struct proc*);
+void mlfq_reset();
+void mlfq_enq(struct proc*);
 void mlfq_task_queue_init(struct mlfq_task_queue*);
+void mlfq_task_queue_reset(struct mlfq_task_queue*);
+int mlfq_task_queue_enq(struct mlfq_task_queue*, struct proc *p);
+struct proc* mlfq_task_queue_deq(struct mlfq_task_queue*);
 
-// return 0 if success
-int
-mlfq_task_queue_enq(struct mlfq_task_queue*, struct proc *p);
-
-// return the process at the tail
-struct proc*
-mlfq_task_queue_deq(struct mlfq_task_queue*);
+// scheduler_t mlfq_scheduler;
+void  __attribute__((noreturn)) mlfq_scheduler(void);

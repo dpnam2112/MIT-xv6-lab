@@ -115,6 +115,7 @@ void            procdump(void);
 struct pstat*   proc_getpstat(int);
 int             sched_tracer_enq(struct sched_tracer*, struct sched_trace*);
 int             sched_tracer_deq(struct sched_tracer*, struct sched_trace*);
+void            record_pstat(struct proc*);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

@@ -149,6 +149,10 @@ worker:
   for (int i = 0; i < NTASKS; i++){
     int w_status;
     int pid = wait(&w_status);
+    if (pid == -1){
+      // no children, exit
+      break;
+    }
     struct pstat pstat;
     printf("process exited pid=%d\n", pid);
     getpstat(pid, &pstat);
