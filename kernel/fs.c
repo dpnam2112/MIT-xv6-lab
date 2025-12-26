@@ -369,6 +369,80 @@ iunlockput(struct inode *ip)
   iput(ip);
 }
 
+uint
+blocktbl_lv_offset(uint eoff, uint lv)
+{
+  if (lv == 0){
+    return eoff % BLOCKTBL_ENTRYNUM;
+  }
+
+  return (eoff >> (lv * BLOCKTBL_LOG2_ENTRYNUM)) % BLOCKTBL_ENTRYNUM;
+}
+
+
+// similar to page table's walk.
+// eoff is the 'entry offset' of the block in the table.
+// return the block address.
+uint
+blocktbl_walk(uint dev, uint tbl_blockaddr, int lv, uint eoff)
+{
+  if (lv < 0){
+    panic("blocktbl_get_blockaddr");
+  }
+
+  struct buf *tbl_buf = bread(dev, tbl_blockaddr);
+  uint *tbl = (uint*) tbl_buf->data;
+
+  // relative offset at the current level
+  uint lvoff = blocktbl_lv_offset(eoff, lv); 
+
+  if (tbl[lvoff] == 0){
+    uint addr = balloc(dev);
+    if (addr == 0){
+      return 0;
+    }
+    tbl[lvoff] = addr;
+    log_write(tbl_buf);
+  }
+
+  uint addr = tbl[lvoff];
+  brelse(tbl_buf);
+
+  if (lv == 0){
+    return addr;
+  }
+  return blocktbl_walk(dev, addr, lv - 1, eoff);
+}
+
+// similar to page table's freewalk.
+// free all sub block tables.
+void
+blocktbl_freewalk(uint dev, uint tbl_blockaddr, int lv)
+{
+  if (lv < 0){
+    panic("blocktbl_freewalk");
+  }
+
+  struct buf *tbl_buf = bread(dev, tbl_blockaddr);
+  uint *tbl = (uint*) tbl_buf->data;
+  for (uint i = 0; i < BLOCKTBL_ENTRYNUM; i++){
+    if (lv == 0){
+      // single level block table
+      // only free leaf nodes
+      if (tbl[i] != 0){
+        bfree(dev, tbl[i]);
+      }
+    } else {
+      // multi-level block table
+      if (tbl[i] != 0){
+        blocktbl_freewalk(dev, tbl[i], lv - 1);
+        bfree(dev, tbl[i]);
+      }
+    }
+  }
+  brelse(tbl_buf);
+}
+
 // Inode content
 //
 // The content (data) associated with each inode is stored
@@ -382,8 +456,7 @@ iunlockput(struct inode *ip)
 static uint
 bmap(struct inode *ip, uint bn)
 {
-  uint addr, *a;
-  struct buf *bp;
+  uint addr;
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0){
@@ -404,19 +477,27 @@ bmap(struct inode *ip, uint bn)
         return 0;
       ip->addrs[NDIRECT] = addr;
     }
-    bp = bread(ip->dev, addr);
-    a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
-      addr = balloc(ip->dev);
-      if(addr){
-        a[bn] = addr;
-        log_write(bp);
-      }
+    addr = blocktbl_walk(ip->dev, ip->addrs[NDIRECT], 0, bn);
+    if (addr != 0){
+      return addr;
     }
-    brelse(bp);
-    return addr;
   }
 
+  bn -= NINDIRECT;
+  if (bn < NINDIRECT_L1){
+    if((addr = ip->addrs[NDIRECT + 1]) == 0){
+      addr = balloc(ip->dev);
+      if(addr == 0)
+        return 0;
+      ip->addrs[NDIRECT + 1] = addr;
+    }
+
+    addr = blocktbl_walk(ip->dev, ip->addrs[NDIRECT + 1], 1, bn);
+    if (addr != 0){
+      return addr;
+    }
+  }
+  
   panic("bmap: out of range");
 }
 
@@ -425,9 +506,7 @@ bmap(struct inode *ip, uint bn)
 void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
+  int i;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -437,15 +516,15 @@ itrunc(struct inode *ip)
   }
 
   if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
-    a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
-        bfree(ip->dev, a[j]);
-    }
-    brelse(bp);
+    blocktbl_freewalk(ip->dev, ip->addrs[NDIRECT], 0);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  if(ip->addrs[NDIRECT + 1]){
+    blocktbl_freewalk(ip->dev, ip->addrs[NDIRECT + 1], 1);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT + 1] = 0;
   }
 
   ip->size = 0;
