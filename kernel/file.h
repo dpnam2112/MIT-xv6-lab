@@ -1,5 +1,7 @@
+#include "param.h"
+
 struct file {
-  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE, FD_SYMLINK } type;
   int ref; // reference count
   char readable;
   char writable;
@@ -27,6 +29,13 @@ struct inode {
   short nlink;
   uint size;
   uint addrs[NDIRECT+2];
+
+};
+
+struct symlink_content {
+  char path[MAXPATH+1]; // target path the symlink points to
+  uint reldir_dev;            // device number of the relative directory i-node
+  uint reldir_inum;           // i-node number of the relative directory
 };
 
 // map major device number to device functions.

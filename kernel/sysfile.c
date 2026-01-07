@@ -1,5 +1,3 @@
-//
-// File-system system calls.
 // Mostly argument checking, since we don't trust
 // user code, and calls into file.c and fs.c.
 //
@@ -215,7 +213,6 @@ sys_unlink(void)
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
   if(ip->type == T_DIR && !isdirempty(ip)){
-    iunlockput(ip);
     goto bad;
   }
 
@@ -258,6 +255,8 @@ create(char *path, short type, short major, short minor)
     ilock(ip);
     if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
       return ip;
+    if (type == T_SYMLINK && ip->type == T_SYMLINK)
+      return ip;
     iunlockput(ip);
     return 0;
   }
@@ -288,10 +287,74 @@ create(char *path, short type, short major, short minor)
     iupdate(dp);
   }
 
+  if(type == T_SYMLINK){
+  }
+
   iunlockput(dp);
 
   return ip;
 
+ fail:
+  // something went wrong. de-allocate ip.
+  ip->nlink = 0;
+  iupdate(ip);
+  iunlockput(ip);
+  iunlockput(dp);
+  return 0;
+}
+
+// atomically create a symlink i-node.
+static struct inode*
+create_symlink(char *path, const char *target, short major, short minor)
+{
+  struct inode *ip, *dp;
+  char name[DIRSIZ];
+
+  if((dp = nameiparent(path, name)) == 0)
+    return 0;
+
+  ilock(dp);
+
+  if((ip = dirlookup(dp, name, 0)) != 0){
+    iunlockput(dp);
+    return 0;
+  }
+
+  if((ip = ialloc(dp->dev, T_SYMLINK)) == 0){
+    iunlockput(dp);
+    return 0;
+  }
+
+  ilock(ip);
+  ip->type = T_SYMLINK;
+  ip->major = major;
+  ip->minor = minor;
+  ip->nlink = 1;
+
+  struct symlink_content symlink_content;
+  if(target[0] == '/'){
+    symlink_content.reldir_dev = ROOTDEV;
+    symlink_content.reldir_inum = ROOTINO;
+  } else {
+    struct inode *cwd = idup(myproc()->cwd);
+    ilock(cwd);
+    symlink_content.reldir_dev = cwd->dev;
+    symlink_content.reldir_inum = cwd->inum;
+    iunlockput(cwd);
+  }
+  memmove(symlink_content.path, target, MAXPATH);
+  symlink_content.path[MAXPATH] = 0;
+
+  int written = writei(ip, 0, (uint64) &symlink_content, 0, sizeof(symlink_content));
+  if(written < sizeof(symlink_content))
+    goto fail;
+
+  iupdate(ip);
+  if(dirlink(dp, name, ip->inum) < 0)
+    goto fail;
+
+  iunlockput(dp);
+  return ip;
  fail:
   // something went wrong. de-allocate ip.
   ip->nlink = 0;
@@ -307,7 +370,8 @@ sys_open(void)
   char path[MAXPATH];
   int fd, omode;
   struct file *f;
-  struct inode *ip;
+  struct inode *ip; 
+
   int n;
 
   argint(1, &omode);
@@ -328,10 +392,31 @@ sys_open(void)
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if((ip->type == T_DIR && omode != O_RDONLY)
+      || (ip->type == T_SYMLINK && (omode & O_NOFOLLOW) && (omode & (O_WRONLY | O_RDWR)))
+    ){
+      // only operation read is allowed on symlink inode
       iunlockput(ip);
       end_op();
       return -1;
+    }
+
+    if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)){
+      // follow the symlink
+      struct inode *symlink_ip = ip;
+      struct symlink_content symlink_content;
+      int read_tot = readi(symlink_ip, 0, (uint64) &symlink_content, 0, sizeof(symlink_content));
+      if (read_tot != sizeof(symlink_content))
+        panic("sys_open");
+
+      int depth, retcode;
+      if((retcode = symlink_follow(symlink_ip, &ip, &depth)) < 0){
+        iunlockput(symlink_ip);
+        end_op();
+        return -1;
+      }
+
+      iunlockput(symlink_ip);
     }
   }
 
@@ -352,6 +437,8 @@ sys_open(void)
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
+  } else if (ip->type == T_SYMLINK){
+    f->type = FD_SYMLINK;
   } else {
     f->type = FD_INODE;
     f->off = 0;
@@ -501,5 +588,26 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+// symlink(const char *target, const char *path);
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH];
+  char path[MAXPATH];
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  begin_op();
+  struct inode *ip = create_symlink(path, target, 0, 0);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op();
   return 0;
 }

@@ -369,7 +369,7 @@ iunlockput(struct inode *ip)
   iput(ip);
 }
 
-uint
+static inline uint
 blocktbl_lv_offset(uint eoff, uint lv)
 {
   if (lv == 0){
@@ -762,6 +762,29 @@ namex(char *path, int nameiparent, char *name)
   return ip;
 }
 
+// "relative" namei
+static struct inode*
+rel_namei(int dir_dev, int dir_inum, char *path, char *name)
+{
+  struct inode *ip, *next;
+  ip = iget(dir_dev, dir_inum);
+  while((path = skipelem(path, name)) != 0){
+    ilock(ip);
+    if(ip->type != T_DIR){
+      iunlockput(ip);
+      return 0;
+    }
+
+    if((next = dirlookup(ip, name, 0)) == 0){
+      iunlockput(ip);
+      return 0;
+    }
+    iunlockput(ip);
+    ip = next;
+  }
+  return ip;
+}
+
 struct inode*
 namei(char *path)
 {
@@ -773,4 +796,76 @@ struct inode*
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
+}
+
+// caller must acquires the symlink's lock first.
+// the target inode is put at iret, and is ensured to
+// be locked.
+int
+symlink_follow(struct inode *symlink_ip, struct inode **iret, int *depthret)
+{
+  if(symlink_ip->type != T_SYMLINK){
+    panic("symlink_follow");
+  }
+
+  int depth = 0;
+  struct inode *ip = symlink_ip;
+  struct inode *refered_ip;
+
+  // a symlink may also refers to another symlink.
+  // we limit 'depth' to avoid cycle.
+  do {
+    // a chain of symlink may form a cycle, and
+    // during the walking process, it may return back
+    // to the starting point.
+    if(ip == 0 || (ip == symlink_ip && depth > 0)){
+      // avoid cycle and deadlock.
+      break;
+    }
+
+    if (ip != symlink_ip)
+      ilock(ip);
+
+    if(ip->type != T_SYMLINK){
+      // found.
+      *depthret = depth;
+      *iret = ip;
+      return 0;
+    }
+
+    struct symlink_content symlink_content;
+    int read_tot = readi(ip, 0, (uint64) &symlink_content, 0, sizeof(symlink_content));
+    if (read_tot != sizeof(struct symlink_content))
+      panic("symlink_follow");
+
+    if (symlink_content.path[0] == '/'){
+      refered_ip = namei(symlink_content.path);
+    } else {
+      refered_ip = rel_namei(symlink_content.reldir_dev, symlink_content.reldir_inum, symlink_content.path, 0);
+    }
+
+    if (ip != symlink_ip)
+      iunlockput(ip);
+
+    ip = refered_ip;
+    depth++;
+  } while (depth < SYMLINK_MAXDEPTH);
+
+  // error handling
+  int errcode = -1;
+  if(ip == 0){
+    errcode = SYMLINK_FL_EINOTFOUND;
+  } else if (ip == symlink_ip || depth >= SYMLINK_MAXDEPTH){
+    // symlink chains containing cycles would cause an infinite loop
+    // of walks, regardless of breaking the loop early or not. so returning
+    // SYMLINK_FW_EMAXDEPTH here is appropriate, imo.
+    errcode = SYMLINK_FL_EMAXDEPTH;
+  }
+
+  if(ip != 0 && ip != symlink_ip)
+    iunlockput(ip);
+
+  *iret = 0;
+  *depthret = depth;
+  return errcode;
 }

@@ -16,12 +16,15 @@ static void testsymlink(void);
 static void concur(void);
 static void cleanup(void);
 
+int en_concur = 1;
+
 int
 main(int argc, char *argv[])
 {
   cleanup();
   testsymlink();
-  concur();
+  if (en_concur)
+    concur();
   exit(failed);
 }
 

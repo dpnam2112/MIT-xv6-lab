@@ -73,3 +73,14 @@ struct dirent {
 // using bitmask operations.
 #define BLOCKTBL_ENTRYNUM (BSIZE / sizeof(uint))
 #define BLOCKTBL_LOG2_ENTRYNUM 8 // hardcoded for now. log2(1024 / 4)
+
+
+// depth of a symlink is the number of symlinks encountered during
+// the symlink walking process, including itself.
+// e.g., for symlink refering directly to a normal file or directory, 
+// depth = 1.
+#define SYMLINK_MAXDEPTH 16
+
+// error codes returned by symlink_follow
+#define SYMLINK_FL_EINOTFOUND -2 // inode not found
+#define SYMLINK_FL_EMAXDEPTH -3 // max depth reached
