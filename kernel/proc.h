@@ -1,4 +1,4 @@
-#include "vm.h"
+#include "vma.h"
 
 // Saved registers for kernel context switches.
 struct context {
