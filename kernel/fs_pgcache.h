@@ -18,7 +18,7 @@ struct fs_pgcache_ent {
 	struct spinlock *lk;
 };
 
-#define PGCACHE_MAXSIZE 64
+#define PGCACHE_MAXSIZE 128
 
 struct fs_pgcache {
 	struct fs_pgcache_ent entries[PGCACHE_MAXSIZE];
