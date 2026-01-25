@@ -449,3 +449,15 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+int
+handle_mmap_read_pg_fault()
+{
+  return -1;
+}
+
+int
+handle_mmap_write_pg_fault()
+{
+  return -1;
+}

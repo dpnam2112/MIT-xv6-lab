@@ -1,3 +1,16 @@
+#include "types.h"
+#include "riscv.h"
+#include "defs.h"
+#include "param.h"
+#include "memlayout.h"
+#include "spinlock.h"
+#include "proc.h"
+#include "vma.h"
+#include "stat.h"
+#include "sleeplock.h"
+#include "err.h"
+#include "file.h"
+
 // Prototype: void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 uint64
 sys_mmap(void)
@@ -34,12 +47,23 @@ sys_mmap(void)
 
   struct inode *ip = f->ip;
   if(ip == 0){
-    panic("mmap");
+    return -EINVAL;
   }
 
   int err;
-  if((err = vma_tbl_mmap(&p->vma_tbl, mmaped_vaddr, len, ip->inum, offset, flags, prot)) < 0){
-    return err;
+  if((err = vma_tbl_mmap_add(&p->vma_tbl, mmaped_vaddr, len, ip->inum, offset, flags, prot)) < 0){
+     release(&p->lock);
+     return err;
+  }
+
+  uint64 vstart = PGROUNDUP(mmaped_vaddr);
+  int pgcount = PGROUNDUP(len);
+
+  // page frame allocation is handled when page fault occurs
+  int perm = PTE_U | PTE_MMAP;
+  if((err = mappages(p->pagetable, vstart, pgcount, 0, perm)) < 0){
+    release(&p->lock);
+    return -1;
   }
 
   return 0;

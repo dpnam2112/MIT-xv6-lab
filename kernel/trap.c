@@ -29,6 +29,18 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+int
+handle_mmap_mem_read_pgfault()
+{
+  return -1;
+}
+
+int
+handle_mmap_mem_wrt_pgfault()
+{
+  return -1;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -65,6 +77,12 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 13){
+    // load page fault: failed to read data
+    // TODO
+  } else if(r_scause() == 15){
+    // store page fault: failed to write data
+    // TODO
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
