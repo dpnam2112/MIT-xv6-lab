@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "fcntl.h"
 #include "defs.h"
 
 struct spinlock tickslock;
@@ -29,16 +30,42 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
-int
-handle_mmap_mem_read_pgfault()
+void
+handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 {
-  return -1;
-}
+  struct proc *p = myproc();
+  struct vma *vma = vma_tbl_lookup(p->vma_tbl, vaddr);
+  if(vma == 0){
+    panic("mmap trap");
+  }
 
-int
-handle_mmap_mem_wrt_pgfault()
-{
-  return -1;
+  // TODO: check protection flags
+  uint mmap_flags = vma->mmap_flags;
+  if(mmap_flags == PROT_NONE){
+    goto fault;
+  }
+
+  if(r_scause() == 12 && !(mmap_flags & PROT_EXEC)){
+    goto fault;
+  }
+
+  if(r_scause() == 13 && !(mmap_flags & PROT_READ)){
+    goto fault;
+  }
+
+  if(r_scause() == 15 && !(mmap_flags & PROT_WRITE)){
+    goto fault;
+  }
+  
+  if(vma->mmap_prot & MAP_PRIVATE){
+    // TODO: load data to the process' private memory space
+    //
+  }
+
+fault:
+  printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+  printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+  setkilled(p);
 }
 
 //
@@ -77,12 +104,13 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if(r_scause() == 13){
+  } else if(r_scause() == 12 || r_scause() == 13 || r_scause() == 15){
     // load page fault: failed to read data
-    // TODO
-  } else if(r_scause() == 15){
-    // store page fault: failed to write data
-    // TODO
+    uint64 faulted_vaddr = r_stval();
+    pte_t* pte = walk(p->pagetable, faulted_vaddr, 0);
+    if(pte != 0 && (*pte & PTE_MMAP)){
+      handle_mmap_pgfault(faulted_vaddr, pte);
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {

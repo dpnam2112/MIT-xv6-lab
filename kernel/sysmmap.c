@@ -10,24 +10,33 @@
 #include "sleeplock.h"
 #include "err.h"
 #include "file.h"
+#include "fcntl.h"
 
 // Prototype: void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 uint64
 sys_mmap(void)
 {
-  uint64 mmaped_vaddr;
+  uint64 uvaddr;
   uint len;
   int prot;
   int flags;
   uint offset;
   int fd;
 
-  argaddr(0, &mmaped_vaddr);
+  argaddr(0, &uvaddr);
   argint(1, (int*) &len);
   argint(2, &prot);
   argint(3, &flags);
   argint(4, &fd);
   argint(5, (int*) &offset);
+
+  if(uvaddr != 0){
+    // not supported.
+    // in real-world implementations, the kernel should
+    // take this argument as a hint to place the mapping
+    // in the virtual address space.
+    return -EINVAL;
+  }
 
   // check if the mapping is overlapped with an existing mapping.
   // if yes, return EEXIST.
@@ -47,25 +56,41 @@ sys_mmap(void)
 
   struct inode *ip = f->ip;
   if(ip == 0){
+    release(&p->lock);
     return -EINVAL;
   }
 
-  int err;
-  if((err = vma_tbl_mmap_add(&p->vma_tbl, mmaped_vaddr, len, ip->inum, offset, flags, prot)) < 0){
-     release(&p->lock);
-     return err;
-  }
-
-  uint64 vstart = PGROUNDUP(mmaped_vaddr);
-  int pgcount = PGROUNDUP(len);
-
-  // page frame allocation is handled when page fault occurs
-  int perm = PTE_U | PTE_MMAP;
-  if((err = mappages(p->pagetable, vstart, pgcount, 0, perm)) < 0){
+  if(prot == 0){
     release(&p->lock);
-    return -1;
+    return -EINVAL;
   }
 
+
+  uint64 vstart = PGROUNDUP(p->sz);
+  // ensure that there is no other region occupied
+  for(uint64 pgaddr = vstart; pgaddr < vstart + len; pgaddr = pgaddr + PGSIZE){
+    pte_t *pte = walk(p->pagetable, pgaddr, 1);
+    if(pte == 0){
+      release(&p->lock);
+      return -ENOMEM;
+    }
+
+    if(*pte & PTE_V){
+      // this region is already occupied
+      release(&p->lock);
+      return -EINVAL;
+    }
+
+    uint64 pa = 0; // dummy physical address
+
+    // disable read and write permissions, data will be loaded
+    // into the memory when page fault occurs.
+    int flags = PTE_V | PTE_U | PTE_MMAP;
+    *pte = PA2PTE(pa) | flags;
+  }
+
+  p->sz = vstart + len;
+  release(&p->lock);
   return 0;
 }
 
