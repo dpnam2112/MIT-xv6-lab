@@ -24,7 +24,7 @@ static int range_cmp(uint64 lhs_addr, int left_len, uint64 rhs_addr, int rhs_len
   return -1;
 }
 
-int vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, int inum, int foff, int mmap_flags, int mmap_prot)
+int vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode *ip, int foff, int mmap_flags, int mmap_prot)
 {
   acquire(&tbl->lk);
   struct vma *new = vma_alloc();
@@ -37,7 +37,7 @@ int vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, int inum, i
 
   new->vstart = vstart;
   new->len = len;
-  new->inum = inum;
+  new->ip = ip;
   new->foffset = foff;
   new->mmap_flags = mmap_flags;
   new->mmap_prot = mmap_prot;

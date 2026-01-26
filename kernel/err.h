@@ -3,3 +3,4 @@
 #define EEXIST 11 // already exist
 #define ENOENT 12 // no entity
 #define ENOMEM 13
+#define EIO 14

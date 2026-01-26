@@ -36,7 +36,8 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
   struct proc *p = myproc();
   struct vma *vma = vma_tbl_lookup(p->vma_tbl, vaddr);
   if(vma == 0){
-    panic("mmap trap");
+    // inconsistent state. require debugging.
+    panic("this memory area is unmapped.");
   }
 
   // TODO: check protection flags
@@ -56,12 +57,60 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
   if(r_scause() == 15 && !(mmap_flags & PROT_WRITE)){
     goto fault;
   }
-  
-  if(vma->mmap_prot & MAP_PRIVATE){
-    // TODO: load data to the process' private memory space
-    //
+
+  if(mmap_flags & PROT_READ){
+    *pte |= PTE_R;  
   }
 
+  if (mmap_flags & PROT_WRITE){
+    *pte |= PTE_W;
+  }
+
+  if (mmap_flags & PROT_EXEC){
+    *pte |= PTE_X;
+  }
+
+  uint64 foff = vma->foffset + (vaddr - vma->vstart);
+
+  if(vma->mmap_prot & MAP_PRIVATE){
+    // TODO: load data to the process' private memory space
+    struct inode *ip = idup(vma->ip);
+    ilock(ip);
+
+    void *kpage = kalloc();
+    if(kpage == 0){
+      printf("handle_mmap_pgfault(): failed to handle trap. No memory is available.");
+      iunlockput(ip);
+      goto fault;
+    }
+
+    int err = readi(ip, 0, (uint64) kpage, foff, PGSIZE);
+    if(err < 0){
+      printf("handle_mmap_pgfault(): failed to handle page fault. error while performing I/O.\n");
+      iunlockput(ip);
+      goto fault;
+    }
+
+    *pte |= PA2PTE(kpage);
+  } else if (vma->mmap_prot & MAP_SHARED){
+    // load data to the page cache
+    struct inode *ip = idup(vma->ip);
+    ilock(ip);
+    uint64 cached_pg;
+    int err = fs_pgcache_load(ip, foff, p->pid, vaddr, &cached_pg);
+    if(err < 0){
+      printf("handle_mmap_pgfault(): failed to load data from file to page cache.");
+      iunlockput(ip);
+      goto fault;
+    }
+
+    *pte |= PA2PTE(cached_pg);
+    iunlockput(ip);
+  } else {
+    goto fault;
+  }
+
+  return;
 fault:
   printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
   printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
@@ -105,7 +154,6 @@ usertrap(void)
 
     syscall();
   } else if(r_scause() == 12 || r_scause() == 13 || r_scause() == 15){
-    // load page fault: failed to read data
     uint64 faulted_vaddr = r_stval();
     pte_t* pte = walk(p->pagetable, faulted_vaddr, 0);
     if(pte != 0 && (*pte & PTE_MMAP)){

@@ -30,13 +30,14 @@ sys_mmap(void)
   argint(4, &fd);
   argint(5, (int*) &offset);
 
-  if(uvaddr != 0){
-    // not supported.
+  if(uvaddr != 0 || prot == 0 || offset % PGSIZE != 0){
+    // uvaddr == 0 is not supported.
     // in real-world implementations, the kernel should
     // take this argument as a hint to place the mapping
     // in the virtual address space.
     return -EINVAL;
   }
+
 
   // check if the mapping is overlapped with an existing mapping.
   // if yes, return EEXIST.
@@ -44,27 +45,12 @@ sys_mmap(void)
   acquire(&p->lock);
 
   struct file *f = p->ofile[fd];
-  if(f == 0){
+  if(f == 0 || f->type != T_FILE || f->ip == 0){
     release(&p->lock);
     return -EINVAL;
   }
 
-  if(f->type != T_FILE){
-    release(&p->lock);
-    return -EINVAL;
-  }
-
-  struct inode *ip = f->ip;
-  if(ip == 0){
-    release(&p->lock);
-    return -EINVAL;
-  }
-
-  if(prot == 0){
-    release(&p->lock);
-    return -EINVAL;
-  }
-
+  struct inode *ip = idup(f->ip);
 
   uint64 vstart = PGROUNDUP(p->sz);
   // ensure that there is no other region occupied
@@ -85,8 +71,14 @@ sys_mmap(void)
 
     // disable read and write permissions, data will be loaded
     // into the memory when page fault occurs.
-    int flags = PTE_V | PTE_U | PTE_MMAP;
-    *pte = PA2PTE(pa) | flags;
+    int pte_flags = PTE_V | PTE_U | PTE_MMAP;
+    *pte = PA2PTE(pa) | pte_flags;
+  }
+
+  int err = vma_tbl_mmap_add(p->vma_tbl, vstart, len, ip, offset, flags, prot);
+  if(err < 0){
+    release(&p->lock);
+    return err;
   }
 
   p->sz = vstart + len;

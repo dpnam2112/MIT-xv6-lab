@@ -8,9 +8,9 @@
 
 struct vma {
 	uint64 vstart; // starting virtual address
-	uint64 foffset; // offset of the region in the file
+	uint64 foffset; // offset of the region in the file. must be a multiple of PGSIZE.
 	int vma_type; // should be VMA_MMAP
-	int inum;
+  struct inode *ip;
 	int len; // size of the mmap region
 	uint64 mmap_prot; // protection mode
 	uint64 mmap_flags; // flags set when `mmap` is called
@@ -54,7 +54,7 @@ struct vma *vma_tbl_lookup(struct vma_tbl *tbl, uint64 vaddr);
 // - foff: offset of the mapping in the file.
 // Returns:
 // - 0 if the op is successful. Otherwise, a negative integer is returned.
-int vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, int inum, int foff, int mmap_flags, int mmap_prot);
+int vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode*, int foff, int mmap_flags, int mmap_prot);
 
 // used in munmap
 // edge case: partial ummap, e.g., unmap a 4-KiB region in a 16 kiB mmap region.
