@@ -115,7 +115,7 @@ int vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
 
   left_piece->vstart = split_target->vstart;
   left_piece->len = vstart - split_target->vstart;
-  left_piece->inum = split_target->inum;
+  left_piece->ip = idup(split_target->ip);
   left_piece->foffset = split_target->foffset;
   left_piece->mmap_flags = left_piece->mmap_flags;
   left_piece->mmap_prot = left_piece->mmap_prot;
