@@ -2,6 +2,7 @@
 #define FS_PGCACHE
 
 #include "types.h"
+#include "defs.h"
 
 // A simple mechanism to track referrers, which refer to a page.
 struct fs_pgcache_referrer {
@@ -12,7 +13,7 @@ struct fs_pgcache_referrer {
 
 struct fs_pgcache_ent {
 	int inum; // i-node number
-	int foffset; // must be a multiple of PGSIZE
+	off_t foffset; // must be a multiple of PGSIZE
 	uint8 dirty; // whether the page is modified from its initial state
 	struct fs_pgcache_referrer *referrers; // used to track logical pages (pages in the processes' vm spaces) referring to this cached page
 	struct spinlock *lk;
