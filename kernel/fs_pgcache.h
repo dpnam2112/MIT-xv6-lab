@@ -7,7 +7,7 @@ struct fs_pgcache_referrer {
 };
 
 struct fs_pgcache_ent {
-  int freed;
+  int alloc;
 	int inum; // i-node number
 	off_t foffset; // must be a multiple of PGSIZE
 	uint8 dirty; // whether the page is modified from its initial state
@@ -22,5 +22,3 @@ struct fs_pgcache {
 	struct fs_pgcache_ent entries[PGCACHE_MAXSIZE];
 	uint size; // number of entries
 };
-
-struct fs_pgcache fs_pgcache;
