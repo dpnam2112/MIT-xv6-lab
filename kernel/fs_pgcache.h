@@ -1,5 +1,6 @@
 // A simple mechanism to track referrers, which refer to a page.
 struct fs_pgcache_referrer {
+  uint used;
 	uint pid; // process id
 	uint vpgaddr; // address of the mmap-ed page in the process' vm space
 	struct fs_pgcache_referrer *next;
@@ -7,7 +8,7 @@ struct fs_pgcache_referrer {
 };
 
 struct fs_pgcache_ent {
-  int alloc;
+  uint used;
 	int inum; // i-node number
 	off_t foffset; // must be a multiple of PGSIZE
 	uint8 dirty; // whether the page is modified from its initial state
