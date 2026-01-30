@@ -47,7 +47,7 @@ proc_mapstacks(pagetable_t kpgtbl)
 void
 procinit(void)
 {
-  // TODO(mmap): add init logic for vma
+  // TODO(mmap): add init logic for vma table
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");

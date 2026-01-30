@@ -38,7 +38,6 @@ sys_mmap(void)
     return -EINVAL;
   }
 
-
   // check if the mapping is overlapped with an existing mapping.
   // if yes, return EEXIST.
   struct proc *p = myproc();
@@ -89,5 +88,13 @@ sys_mmap(void)
 uint64
 sys_munmap(void)
 {
-
+  // munmap should synchronize the mmap-ed region
+  // in the file with its in memory counterpart
+  // to pass this lab.
+  //
+  // TODO:
+  // - remove the vma region 
+  // - for every page in the vma region, check if
+  // the page is dirty. if yes -> write the page
+  // back to the file.
 }
