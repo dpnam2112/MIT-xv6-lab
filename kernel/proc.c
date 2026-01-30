@@ -47,6 +47,7 @@ proc_mapstacks(pagetable_t kpgtbl)
 void
 procinit(void)
 {
+  // TODO(mmap): add init logic for vma
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");
@@ -279,6 +280,7 @@ growproc(int n)
 int
 fork(void)
 {
+  // TODO(mmap): handle the case PTE is mmap-shared
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();

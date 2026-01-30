@@ -89,5 +89,5 @@ sys_mmap(void)
 uint64
 sys_munmap(void)
 {
-  return -1;
+
 }
