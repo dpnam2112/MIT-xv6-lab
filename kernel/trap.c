@@ -3,10 +3,10 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
-#include "proc.h"
 #include "fcntl.h"
 #include "defs.h"
 #include "vma.h"
+#include "proc.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -35,7 +35,7 @@ void
 handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 {
   struct proc *p = myproc();
-  struct vma *vma = vma_tbl_lookup(p->vma_tbl, vaddr, 1);
+  struct vma *vma = vma_tbl_lookup(&p->vma_tbl, vaddr, 1);
   if(vma == 0){
     // inconsistent state. require debugging.
     panic("this memory area is unmapped.");
@@ -97,7 +97,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
     struct inode *ip = idup(vma->ip);
     ilock(ip);
     uint64 cached_pg;
-    int err = fs_pgcache_load(ip, foff, p->pid, vaddr, &cached_pg);
+    int err = fs_pgcache_map(ip, foff, p->pid, vaddr, &cached_pg);
     if(err < 0){
       printf("handle_mmap_pgfault(): failed to load data from file to page cache.");
       iunlockput(ip);

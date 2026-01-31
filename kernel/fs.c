@@ -15,6 +15,7 @@
 #include "param.h"
 #include "stat.h"
 #include "spinlock.h"
+#include "vma.h"
 #include "proc.h"
 #include "sleeplock.h"
 #include "fs.h"

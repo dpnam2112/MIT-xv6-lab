@@ -105,7 +105,7 @@ fs_pgcache_ent_add_referrer(struct fs_pgcache_ent *ent, int refpid, uint64 ref_v
 // map the on-disk page to an available page in
 // the page cache.
 int
-fs_pgcache_map(struct inode *ip, int foffset, int ref_pid, int ref_vaddr, int cause, uint64 *ret_phypg_addr)
+fs_pgcache_map(struct inode *ip, int foffset, int ref_pid, int ref_vaddr, uint64 *ret_phypg_addr)
 {
   if(ip == 0 || foffset % PGSIZE != 0 || ref_vaddr % PGSIZE != 0 || ret_phypg_addr == 0){
     printf("debug: in fs_pgcache_map: invalid parameters\n");

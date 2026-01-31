@@ -5,8 +5,8 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
-#include "proc.h"
 #include "vma.h"
+#include "proc.h"
 #include "stat.h"
 #include "sleeplock.h"
 #include "err.h"
@@ -70,7 +70,7 @@ sys_mmap(void)
     *pte = PA2PTE(pa) | pte_flags;
   }
 
-  int err = vma_tbl_mmap_add(p->vma_tbl, vstart, len, ip, offset, flags, prot);
+  int err = vma_tbl_mmap_add(&p->vma_tbl, vstart, len, ip, offset, flags, prot);
   if(err < 0){
     return err;
   }
@@ -97,7 +97,7 @@ sys_munmap(void)
   }
 
   struct proc *p = myproc();
-  struct vma *vma = vma_tbl_mmap_rm(p->vma_tbl, vstart, len);
+  struct vma *vma = vma_tbl_mmap_rm(&p->vma_tbl, vstart, len);
   if(vma == 0 || vma->vma_type != VMA_MMAP){
     // no vma found, or something went wrong
     return -1;

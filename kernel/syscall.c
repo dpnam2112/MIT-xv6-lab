@@ -3,9 +3,10 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
-#include "proc.h"
 #include "syscall.h"
 #include "defs.h"
+#include "vma.h"
+#include "proc.h"
 
 // Fetch the uint64 at addr from the current process.
 int

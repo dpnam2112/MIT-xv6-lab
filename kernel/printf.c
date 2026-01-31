@@ -13,6 +13,7 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
+#include "vma.h"
 #include "proc.h"
 
 volatile int panicked = 0;

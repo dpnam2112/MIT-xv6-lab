@@ -4,12 +4,13 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
-#include "proc.h"
-#include "vma.h"
 #include "stat.h"
 #include "sleeplock.h"
 #include "err.h"
+#include "fs.h"
 #include "file.h"
+#include "vma.h"
+#include "proc.h"
 
 uint64
 sys_exit(void)

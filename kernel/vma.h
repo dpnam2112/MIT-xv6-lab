@@ -17,6 +17,4 @@ struct vma_tbl {
 	struct vma *vma_head;
 };
 
-struct vma_tbl vma_tables[NPROC];
-
 #define VMA_MMAP 1

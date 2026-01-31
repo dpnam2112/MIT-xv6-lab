@@ -180,7 +180,7 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 
   // mmap implementation
-  proc_mmap_wrtback();
+  proc_free_vmatbl();
 }
 
 // Create a user page table for a given process, with no user memory,
