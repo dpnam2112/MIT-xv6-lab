@@ -3,6 +3,7 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "vma.h"
 #include "proc.h"
 #include "defs.h"
 
@@ -17,6 +18,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+static void proc_free_vmatbl();
 
 extern char trampoline[]; // trampoline.S
 
@@ -57,6 +59,9 @@ procinit(void)
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
   }
+
+  // mmap implementation
+  vma_tbl_init(&p->vma_tbl);
 }
 
 // Must be called with interrupts disabled,
@@ -147,6 +152,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // mmap implementation
+  vma_tbl_init(&p->vma_tbl);
+
   return p;
 }
 
@@ -170,6 +178,9 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  // mmap implementation
+  proc_mmap_wrtback();
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -323,6 +334,8 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
+
+  // TODO(mmap): copy vma table
 
   return pid;
 }
@@ -693,5 +706,22 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+static void
+proc_free_vmatbl()
+{
+  // TODO: iterate the vma table and unmap
+  // all of the mmap-ed virtual memory area.
+  struct vma_tbl *vma_tbl = &(myproc()->vma_tbl);
+  struct vma *it = vma_tbl->vma_head;
+  while(it != 0){
+    struct vma *next = it->next;
+    if(vma_mmap_eitherflush(it) < 0){
+      printf("debug: proc_free_vmatbl: error when calling vma_mmap_eitherflush\n");
+    }
+    vma_free(it);
+    it = next;
   }
 }

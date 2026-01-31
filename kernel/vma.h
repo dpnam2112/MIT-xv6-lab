@@ -19,3 +19,4 @@ struct vma_tbl {
 
 struct vma_tbl vma_tables[NPROC];
 
+#define VMA_MMAP 1

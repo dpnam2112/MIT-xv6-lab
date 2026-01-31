@@ -42,11 +42,8 @@ sys_mmap(void)
   // check if the mapping is overlapped with an existing mapping.
   // if yes, return EEXIST.
   struct proc *p = myproc();
-  acquire(&p->lock);
-
   struct file *f = p->ofile[fd];
   if(f == 0 || f->type != T_FILE || f->ip == 0){
-    release(&p->lock);
     return -EINVAL;
   }
 
@@ -57,13 +54,11 @@ sys_mmap(void)
   for(uint64 pgaddr = vstart; pgaddr < vstart + len; pgaddr = pgaddr + PGSIZE){
     pte_t *pte = walk(p->pagetable, pgaddr, 1);
     if(pte == 0){
-      release(&p->lock);
       return -ENOMEM;
     }
 
     if(*pte & PTE_V){
       // this region is already occupied
-      release(&p->lock);
       return -EINVAL;
     }
 
@@ -77,12 +72,10 @@ sys_mmap(void)
 
   int err = vma_tbl_mmap_add(p->vma_tbl, vstart, len, ip, offset, flags, prot);
   if(err < 0){
-    release(&p->lock);
     return err;
   }
 
   p->sz = vstart + len;
-  release(&p->lock);
   return 0;
 }
 
@@ -104,36 +97,14 @@ sys_munmap(void)
   }
 
   struct proc *p = myproc();
-  struct vma *vma = vma_tbl_lookup(p->vma_tbl, vstart, len);
-  if(vma == 0){
-    return -EINVAL;
+  struct vma *vma = vma_tbl_mmap_rm(p->vma_tbl, vstart, len);
+  if(vma == 0 || vma->vma_type != VMA_MMAP){
+    // no vma found, or something went wrong
+    return -1;
   }
 
-  struct inode *ip = idup(vma->ip);
-  for(uint64 vaddr = vstart; vaddr < vstart + len; vaddr += PGSIZE){
-    pte_t *pte = walk(p->pagetable, vaddr, 0);
-    if(pte == 0){
-      return -EINVAL;
-    }
-    
-    if(vma->mmap_flags & MAP_SHARED){
-      uint foffset = vma->vstart + (vaddr - vstart);
-      int dirty = *pte & PTE_DIRTY;
-      int err;
-
-      // 'unmap' the page from the page cache
-      // the page should be written back to the file,
-      // in the case it is dirty.
-      if((err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty)) < 0){
-        printf("debug: sys_munmap: fs_pgcache_unmap failed, err=%d\n", err);
-        iunlockput(ip);
-        return -1;
-      }
-    }
-  }
-  iunlockput(ip);
-  if(vma_tbl_mmap_rm(p->vma_tbl, vstart, len) < 0){
-    printf("debug: error removing mmap region in munmap\n");
+  int err;
+  if((err = vma_mmap_eitherflush(vma)) < 0){
     return -1;
   }
 

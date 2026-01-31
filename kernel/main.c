@@ -29,6 +29,8 @@ main()
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
+
+    // mmap implementation
     vmainit();
     fs_pgcache_init();
     __sync_synchronize();

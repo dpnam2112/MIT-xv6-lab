@@ -61,6 +61,7 @@ fs_pgcache_ent_init(struct fs_pgcache_ent* ent)
 void
 fs_pgcache_init()
 {
+  initlock(&fs_pgcache_lk, "fs_pgcache");
   for(int i = 0; i < PGCACHE_MAXSIZE; i++){
     struct fs_pgcache_ent *ent = &fs_pgcache.entries[i];
     fs_pgcache_ent_init(ent);

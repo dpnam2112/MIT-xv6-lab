@@ -5,12 +5,13 @@
 #include "riscv.h"
 #include "defs.h"
 #include "vma.h"
+#include "proc.h"
+#include "fcntl.h"
 
 
-#define VMA_ALLOC_MAX 128
-
-static struct vma vmas[VMA_ALLOC_MAX];
+static struct vma vmas[ALLOC_VMA_MAX];
 static struct spinlock vmas_lk;
+
 
 // this function is intended to be called
 // during the OS initialization process.
@@ -18,13 +19,12 @@ void
 vmainit()
 {
   initlock(&vmas_lk, "vma");
-  for(int i = 0; i < VMA_ALLOC_MAX; i++)
+  for(int i = 0; i < ALLOC_VMA_MAX; i++)
   {
     struct vma *vma = &vmas[i];
     vma->alloc = 0;
   }
 }
-
 
 /** compare two virtual memory areas.
  * lhs, rhs stand for left-hand side, right-hand side, respectively
@@ -45,6 +45,12 @@ static int range_cmp(uint64 lhs_addr, int lhs_len, uint64 rhs_addr, int rhs_len)
   return -1;
 }
 
+void
+vma_tbl_init(struct vma_tbl *tbl)
+{
+  tbl->vma_head = 0;
+}
+
 int
 vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode *ip, int foff, int mmap_flags, int mmap_prot)
 {
@@ -59,6 +65,7 @@ vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode *i
   new->foffset = foff;
   new->mmap_flags = mmap_flags;
   new->mmap_prot = mmap_prot;
+  new->vma_type = VMA_MMAP;
 
   for (struct vma *it = tbl->vma_head->next; it != tbl->vma_head; it = it->next){
     int cmp = range_cmp(new->vstart, new->len, it->vstart, it->len);
@@ -82,7 +89,11 @@ vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode *i
 // remove the vma from the vma tree
 // if the to-be-removed vma is a subset of another existing
 // vma, that vma should be splitted into two pieces.
-int vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
+//
+// return the vma object representing the removed vma.
+// the caller is responsible for managing its lifetime.
+struct vma *
+vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
 {
   struct vma *split_target = 0; // vma to be splitted
   struct vma *it = tbl->vma_head;
@@ -97,7 +108,7 @@ int vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   } while(it != tbl->vma_head);
 
   if(split_target == 0){
-    return -ENOENT;
+    return 0;
   }
 
   if(vstart == split_target->vstart && len < split_target->len){
@@ -121,7 +132,7 @@ int vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   // split the area and add that area to the vma list
   struct vma *left_piece = vma_alloc();
   if(left_piece == 0){
-    return -ENOMEM;
+    return 0;
   }
 
   left_piece->vstart = split_target->vstart;
@@ -141,8 +152,18 @@ int vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   split_target->len = vend - (vstart + len);
   split_target->foffset = fend - split_target->len;
   split_target->prev = left_piece;
+
+  struct vma *ret = vma_alloc();
+  if(ret != 0){
+    ret->mmap_flags = split_target->mmap_flags;
+    ret->mmap_prot = split_target->mmap_prot;
+    ret->ip = idup(split_target->ip);
+    ret->vstart = vstart;
+    ret->len = len;
+    ret->vma_type = VMA_MMAP;
+  }
   
-  return 0;
+  return ret;
 }
 
 struct vma*
@@ -162,7 +183,7 @@ vma_alloc()
 {
   struct vma *found = 0;
   acquire(&vmas_lk);
-  for(int i = 0; i < VMA_ALLOC_MAX; i++){
+  for(int i = 0; i < ALLOC_VMA_MAX; i++){
     struct vma *vma = &vmas[i];
     if(vma->alloc == 0){
       found = vma;
@@ -202,4 +223,42 @@ vma_free(struct vma *vma)
   }
 
   release(&vmas_lk);
+}
+
+int
+vma_mmap_eitherflush(struct vma *vma)
+{
+  struct proc *p = myproc();
+
+  if(vma->vma_type != VMA_MMAP){
+    return -EINVAL;
+  }
+
+  if(vma->mmap_flags & MAP_SHARED){
+    struct inode *ip = idup(vma->ip);
+    ilock(ip);
+    for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
+      pte_t *pte = walk(p->pagetable, vaddr, 0);
+      if(pte == 0){
+        panic("vma_mmap_eitherflush: pte doesn't exist");
+      }
+      
+      uint foffset = vma->vstart + (vaddr - vma->vstart);
+      int dirty = *pte & PTE_DIRTY;
+      int err;
+
+      // 'unmap' the page from the page cache
+      // the page should be written back to the file,
+      // in the case it is dirty.
+      if((err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty)) < 0){
+        printf("debug: vma_mmap_eitherflush: fs_pgcache_unmap failed, err=%d\n", err);
+        iunlockput(ip);
+        return -1;
+      }
+    }
+    iunlockput(ip);
+  }
+
+  // there is no need to flush MAP_PRIVATE vma
+  return 0;
 }
