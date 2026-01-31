@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "fcntl.h"
 #include "defs.h"
+#include "vma.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -34,13 +35,12 @@ void
 handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 {
   struct proc *p = myproc();
-  struct vma *vma = vma_tbl_lookup(p->vma_tbl, vaddr);
+  struct vma *vma = vma_tbl_lookup(p->vma_tbl, vaddr, 1);
   if(vma == 0){
     // inconsistent state. require debugging.
     panic("this memory area is unmapped.");
   }
 
-  // TODO: check protection flags
   uint mmap_flags = vma->mmap_flags;
   if(mmap_flags == PROT_NONE){
     goto fault;
@@ -73,7 +73,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
   uint64 foff = vma->foffset + (vaddr - vma->vstart);
 
   if(vma->mmap_prot & MAP_PRIVATE){
-    // TODO: load data to the process' private memory space
+    // load data to the process' private memory space
     struct inode *ip = idup(vma->ip);
     ilock(ip);
 
@@ -309,4 +309,3 @@ devintr()
     return 0;
   }
 }
-

@@ -12,4 +12,7 @@
 #define FSSIZE       2000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
 #define USERSTACK    1     // user stack pages
+#define PGCACHE_MAXSIZE 128
+#define ALLOC_VMA_MAX 128  // maxinum # of allocable vma structure (struct vma)
+#define ALLOC_FS_PGCACHE_REFERRER_MAX 128 // maximum # of allocable fs_pgcache_referrer structure (struct fs_pgcache_referrer)
 

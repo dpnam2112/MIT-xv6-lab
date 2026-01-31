@@ -12,6 +12,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct vma;
 
 // bio.c
 void            binit(void);
@@ -202,16 +203,16 @@ void            virtio_disk_intr(void);
 // fs_pgcache.c
 void            fs_pgcache_init(); 
 int             fs_pgcache_load(struct inode*, int foffset, int ref_pid, int ref_vaddr, uint64 *ret_phypg_addr);
-int             fs_pgcache_wrt(struct inode*, int foffset);
+int             fs_pgcache_unmap(struct inode *ip, int foffset, int ref_pid, int ref_vaddr, int dirty);
 int             fs_pgcache_flushall();
 
 // vma.c
 struct vma_tbl* vma_tbl_alloc();
 void            vma_tbl_dealloc(struct vma_tbl*);
-void            vma_init(struct vma*);
-struct vma*     vma_alloc();
-void            vma_dealloc(struct vma*);
-struct vma *    vma_tbl_lookup(struct vma_tbl *tbl, uint64 vaddr);
+void            vmainit();
+struct vma *    vma_alloc();
+void            vma_free(struct vma*);
+struct vma *    vma_tbl_lookup(struct vma_tbl *tbl, uint64 vaddr, int len);
 int             vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode*, int foff, int mmap_flags, int mmap_prot);
 int             vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vaddr, int len);
 

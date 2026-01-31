@@ -10,7 +10,6 @@ volatile static int started = 0;
 void
 main()
 {
-  // TODO(mmap): add init logic for page cache
   if(cpuid() == 0){
     consoleinit();
     printfinit();
@@ -30,6 +29,8 @@ main()
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
+    vmainit();
+    fs_pgcache_init();
     __sync_synchronize();
     started = 1;
   } else {

@@ -1,4 +1,5 @@
 #include "types.h"
+#include "fs.h"
 #include "riscv.h"
 #include "defs.h"
 #include "param.h"
@@ -91,10 +92,50 @@ sys_munmap(void)
   // munmap should synchronize the mmap-ed region
   // in the file with its in memory counterpart
   // to pass this lab.
-  //
-  // TODO:
-  // - remove the vma region 
-  // - for every page in the vma region, check if
-  // the page is dirty. if yes -> write the page
-  // back to the file.
+  
+  uint64 vstart;
+  int len;
+
+  argint(0, (int*) &vstart);
+  argint(1, &len);
+
+  if(vstart % PGSIZE != 0 || len < 0){
+    return -EINVAL;
+  }
+
+  struct proc *p = myproc();
+  struct vma *vma = vma_tbl_lookup(p->vma_tbl, vstart, len);
+  if(vma == 0){
+    return -EINVAL;
+  }
+
+  struct inode *ip = idup(vma->ip);
+  for(uint64 vaddr = vstart; vaddr < vstart + len; vaddr += PGSIZE){
+    pte_t *pte = walk(p->pagetable, vaddr, 0);
+    if(pte == 0){
+      return -EINVAL;
+    }
+    
+    if(vma->mmap_flags & MAP_SHARED){
+      uint foffset = vma->vstart + (vaddr - vstart);
+      int dirty = *pte & PTE_DIRTY;
+      int err;
+
+      // 'unmap' the page from the page cache
+      // the page should be written back to the file,
+      // in the case it is dirty.
+      if((err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty)) < 0){
+        printf("debug: sys_munmap: fs_pgcache_unmap failed, err=%d\n", err);
+        iunlockput(ip);
+        return -1;
+      }
+    }
+  }
+  iunlockput(ip);
+  if(vma_tbl_mmap_rm(p->vma_tbl, vstart, len) < 0){
+    printf("debug: error removing mmap region in munmap\n");
+    return -1;
+  }
+
+  return 0;
 }

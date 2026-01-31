@@ -1,7 +1,5 @@
-#include "param.h"
-#include "types.h"
-
 struct vma {
+  int alloc; // if the vma is already allocated and being used, alloc = 1
 	uint64 vstart; // starting virtual address
 	uint64 foffset; // offset of the region in the file. must be a multiple of PGSIZE.
 	int vma_type; // should be VMA_MMAP
@@ -17,7 +15,6 @@ struct vma {
 // although this would be inefficient at scale.
 struct vma_tbl {
 	struct vma *vma_head;
-  struct spinlock lk;
 };
 
 struct vma_tbl vma_tables[NPROC];
