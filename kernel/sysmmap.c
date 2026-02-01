@@ -47,6 +47,11 @@ sys_mmap(void)
     return -1;
   }
 
+  if(flags & MAP_SHARED && ((f->readable == 0 && prot & PROT_READ) || (f->writable == 0 && prot & PROT_WRITE))){
+    // if MAP_SHARED is set, prot config should respect read/write permissions of the file
+    return -1;
+  }
+
 
   uint64 vstart = PGROUNDUP(p->sz);
 
