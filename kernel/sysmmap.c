@@ -40,43 +40,43 @@ sys_mmap(void)
   }
 
   // check if the mapping is overlapped with an existing mapping.
-  // if yes, return EEXIST.
   struct proc *p = myproc();
   struct file *f = p->ofile[fd];
   if(f == 0 || f->type != T_FILE || f->ip == 0){
-    return -EINVAL;
+    printf("debug(mmap): invalid file\n");
+    return -1;
   }
 
-  struct inode *ip = idup(f->ip);
 
   uint64 vstart = PGROUNDUP(p->sz);
+
   // ensure that there is no other region occupied
   for(uint64 pgaddr = vstart; pgaddr < vstart + len; pgaddr = pgaddr + PGSIZE){
     pte_t *pte = walk(p->pagetable, pgaddr, 1);
-    if(pte == 0){
-      return -ENOMEM;
-    }
-
-    if(*pte & PTE_V){
-      // this region is already occupied
-      return -EINVAL;
-    }
 
     uint64 pa = 0; // dummy physical address
+    if(PTE2PA(*pte) != 0 || (*pte & 0x3fe)){
+      // already in use
+      // we don't count PTE_V being set here,
+      // since walk always allocate a valid PTE,
+      // in the case it is told to.
+      return -1;
+    }
 
     // disable read and write permissions, data will be loaded
     // into the memory when page fault occurs.
-    int pte_flags = PTE_V | PTE_U | PTE_MMAP;
+    int pte_flags = PTE_U | PTE_MMAP;
     *pte = PA2PTE(pa) | pte_flags;
   }
 
+  struct inode *ip = idup(f->ip);
   int err = vma_tbl_mmap_add(&p->vma_tbl, vstart, len, ip, offset, flags, prot);
   if(err < 0){
     return err;
   }
 
   p->sz = vstart + len;
-  return 0;
+  return vstart;
 }
 
 uint64
