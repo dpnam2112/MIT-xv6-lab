@@ -49,7 +49,6 @@ proc_mapstacks(pagetable_t kpgtbl)
 void
 procinit(void)
 {
-  // TODO(mmap): add init logic for vma table
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");
@@ -58,10 +57,10 @@ procinit(void)
       initlock(&p->lock, "proc");
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
+      // mmap implementation
+      vma_tbl_init(&p->vma_tbl);
   }
 
-  // mmap implementation
-  vma_tbl_init(&p->vma_tbl);
 }
 
 // Must be called with interrupts disabled,
@@ -724,4 +723,6 @@ proc_free_vmatbl()
     vma_free(it);
     it = next;
   }
+
+  vma_tbl->vma_head = 0;
 }

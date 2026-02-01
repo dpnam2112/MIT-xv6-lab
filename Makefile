@@ -31,6 +31,9 @@ OBJS = \
   $K/kernelvec.o \
   $K/plic.o \
   $K/virtio_disk.o \
+  $K/vma.o \
+  $K/fs_pgcache.o \
+  $K/sysmmap.o \
 
 OBJS_KCSAN = \
   $K/start.o \

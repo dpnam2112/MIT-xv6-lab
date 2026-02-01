@@ -129,6 +129,8 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  vma_tbl_init(&p->vma_tbl);
+
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
