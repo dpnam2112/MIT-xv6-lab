@@ -18,7 +18,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
-static void proc_free_vmatbl();
+static void proc_free_mmap_vma();
 
 extern char trampoline[]; // trampoline.S
 
@@ -166,6 +166,7 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  proc_free_mmap_vma();
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -177,9 +178,6 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
-
-  // mmap implementation
-  proc_free_vmatbl();
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -709,7 +707,7 @@ procdump(void)
 }
 
 static void
-proc_free_vmatbl()
+proc_free_mmap_vma()
 {
   // TODO: iterate the vma table and unmap
   // all of the mmap-ed virtual memory area.
@@ -718,7 +716,7 @@ proc_free_vmatbl()
   while(it != 0){
     struct vma *next = it->next;
     if(vma_mmap_eitherflush(it) < 0){
-      printf("debug: proc_free_vmatbl: error when calling vma_mmap_eitherflush\n");
+      printf("debug: proc_free_mmap_vma: error when calling vma_mmap_eitherflush\n");
     }
     vma_free(it);
     it = next;

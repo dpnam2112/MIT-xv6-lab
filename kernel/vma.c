@@ -30,12 +30,22 @@ vmainit()
  * lhs, rhs stand for left-hand side, right-hand side, respectively
  * return 0 if two areas are overlapped to each other
  * */
-static int range_cmp(uint64 lhs_addr, int lhs_len, uint64 rhs_addr, int rhs_len){
+static int
+overlap_range_cmp(uint64 lhs_addr, int lhs_len, uint64 rhs_addr, int rhs_len)
+{
   int lhs_hi = lhs_addr + lhs_len;
   int rhs_hi = rhs_addr + rhs_len;
-  if(lhs_addr >= rhs_addr || lhs_hi <= rhs_hi){
+
+  if(rhs_addr >= lhs_addr && rhs_hi <= lhs_hi){
     return 0;
   }
+
+  if((lhs_addr >= rhs_addr && lhs_addr < rhs_hi) || (lhs_hi > rhs_addr && lhs_hi <= rhs_hi)){
+    return 0;
+  }
+
+
+  // not-overlapped cases
 
   if(lhs_addr > rhs_hi){
     // interpretation: lhs > rhs => lhs - rhs > 0 => a positive int
@@ -54,6 +64,13 @@ vma_tbl_init(struct vma_tbl *tbl)
 int
 vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode *ip, int foff, int mmap_flags, int mmap_prot)
 {
+  for (struct vma *it = tbl->vma_head; it != 0; it = it->next){
+    int cmp = overlap_range_cmp(vstart, len, it->vstart, it->len);
+    if(cmp == 0){
+      return -EEXIST;
+    }
+  }
+
   struct vma *new = vma_alloc();
   if(new == 0){
     return -ENOMEM;
@@ -67,12 +84,6 @@ vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode *i
   new->mmap_prot = mmap_prot;
   new->vma_type = VMA_MMAP;
 
-  for (struct vma *it = tbl->vma_head->next; it != tbl->vma_head; it = it->next){
-    int cmp = range_cmp(new->vstart, new->len, it->vstart, it->len);
-    if(cmp == 0){
-      return -EEXIST;
-    }
-  }
 
   if(tbl->vma_head == 0){
     tbl->vma_head = new;
@@ -99,7 +110,7 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   struct vma *it = tbl->vma_head;
 
   do {
-    int cmp = range_cmp(it->vstart, it->len, vstart, len);
+    int cmp = overlap_range_cmp(it->vstart, it->len, vstart, len);
     if(cmp == 0 && (vstart >= it->vstart && vstart + len <= it->vstart + it->len)){
       split_target = it;
       break;
@@ -170,7 +181,7 @@ struct vma*
 vma_tbl_lookup(struct vma_tbl *tbl, uint64 vaddr, int len)
 {
   for(struct vma *v = tbl->vma_head; v != 0; v = v->next){
-    if(range_cmp(v->vstart, v->len, vaddr, len) == 0){
+    if(overlap_range_cmp(v->vstart, v->len, vaddr, len) == 0){
       return v;
     }
   }
@@ -242,9 +253,15 @@ vma_mmap_eitherflush(struct vma *vma)
       if(pte == 0){
         panic("vma_mmap_eitherflush: pte doesn't exist");
       }
+
+      int dirty = *pte & PTE_D;
+      int accessed = *pte & PTE_A;
+
+      if(!(dirty || accessed)){
+        continue;
+      }
       
       uint foffset = vma->vstart + (vaddr - vma->vstart);
-      int dirty = *pte & PTE_DIRTY;
       int err;
 
       // 'unmap' the page from the page cache

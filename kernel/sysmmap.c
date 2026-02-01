@@ -55,7 +55,7 @@ sys_mmap(void)
     pte_t *pte = walk(p->pagetable, pgaddr, 1);
 
     uint64 pa = 0; // dummy physical address
-    if(PTE2PA(*pte) != 0 || (*pte & 0x3fe)){
+    if(PTE2PA(*pte) != 0 || (*pte & 0x3ff)){
       // already in use
       // we don't count PTE_V being set here,
       // since walk always allocate a valid PTE,
@@ -65,7 +65,7 @@ sys_mmap(void)
 
     // disable read and write permissions, data will be loaded
     // into the memory when page fault occurs.
-    int pte_flags = PTE_U | PTE_MMAP;
+    int pte_flags = PTE_U | PTE_V | PTE_MMAP;
     *pte = PA2PTE(pa) | pte_flags;
   }
 

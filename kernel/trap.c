@@ -37,62 +37,62 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
   struct proc *p = myproc();
   struct vma *vma = vma_tbl_lookup(&p->vma_tbl, vaddr, 1);
   if(vma == 0){
-    // inconsistent state. require debugging.
-    panic("this memory area is unmapped.");
-  }
-
-  uint mmap_flags = vma->mmap_flags;
-  if(mmap_flags == PROT_NONE){
     goto fault;
   }
 
-  if(r_scause() == 12 && !(mmap_flags & PROT_EXEC)){
+  uint mmap_prot = vma->mmap_prot;
+  if(mmap_prot == PROT_NONE){
     goto fault;
   }
 
-  if(r_scause() == 13 && !(mmap_flags & PROT_READ)){
+  if(r_scause() == 12 && !(mmap_prot & PROT_EXEC)){
     goto fault;
   }
 
-  if(r_scause() == 15 && !(mmap_flags & PROT_WRITE)){
+  if(r_scause() == 13 && !(mmap_prot & PROT_READ)){
     goto fault;
   }
 
-  if(mmap_flags & PROT_READ){
+  if(r_scause() == 15 && !(mmap_prot & PROT_WRITE)){
+    goto fault;
+  }
+
+  if(mmap_prot & PROT_READ){
     *pte |= PTE_R;  
   }
 
-  if (mmap_flags & PROT_WRITE){
+  if (mmap_prot & PROT_WRITE){
     *pte |= PTE_W;
   }
 
-  if (mmap_flags & PROT_EXEC){
+  if (mmap_prot & PROT_EXEC){
     *pte |= PTE_X;
   }
 
   uint64 foff = vma->foffset + (vaddr - vma->vstart);
 
-  if(vma->mmap_prot & MAP_PRIVATE){
+  if(vma->mmap_flags & MAP_PRIVATE){
     // load data to the process' private memory space
     struct inode *ip = idup(vma->ip);
     ilock(ip);
 
     void *kpage = kalloc();
     if(kpage == 0){
-      printf("handle_mmap_pgfault(): failed to handle trap. No memory is available.");
+      printf("debug: handle_mmap_pgfault(): failed to handle trap. No memory is available.");
       iunlockput(ip);
       goto fault;
     }
 
     int err = readi(ip, 0, (uint64) kpage, foff, PGSIZE);
     if(err < 0){
-      printf("handle_mmap_pgfault(): failed to handle page fault. error while performing I/O.\n");
+      printf("debug: handle_mmap_pgfault(): failed to handle page fault. error while performing I/O.\n");
       iunlockput(ip);
       goto fault;
     }
 
     *pte |= PA2PTE(kpage);
-  } else if (vma->mmap_prot & MAP_SHARED){
+    iunlockput(ip);
+  } else if (vma->mmap_flags & MAP_SHARED){
     // load data to the page cache
     struct inode *ip = idup(vma->ip);
     ilock(ip);
