@@ -11,7 +11,6 @@ struct fs_pgcache_ent {
   int alloc;
 	int inum; // i-node number
 	off_t foffset; // must be a multiple of PGSIZE
-	uint8 dirty; // whether the page is modified from its initial state
   uint64 kpage_addr;
 	struct fs_pgcache_referrer *referrers; // used to track logical pages
 	struct spinlock lk;

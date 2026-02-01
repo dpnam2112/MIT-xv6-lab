@@ -203,13 +203,13 @@ void            virtio_disk_intr(void);
 
 // fs_pgcache.c
 void            fs_pgcache_init(); 
-int             fs_pgcache_map(struct inode*, int foffset, int ref_pid, int ref_vaddr, uint64 *ret_phypg_addr);
-int             fs_pgcache_unmap(struct inode *ip, int foffset, int ref_pid, int ref_vaddr, int dirty);
+int             fs_pgcache_map(struct inode*, off_t foffset, int ref_pid, int ref_vaddr, uint64 *ret_phypg_addr);
+int             fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, int dirty);
 
 // vma.c
 void            vmainit();
 struct vma *    vma_alloc();
-int             vma_mmap_eitherflush(struct vma*);
+int             vma_mmap_freepages(struct vma*);
 void            vma_free(struct vma*);
 void            vma_tbl_init(struct vma_tbl*);
 struct vma *    vma_tbl_lookup(struct vma_tbl *tbl, uint64 vaddr, int len);

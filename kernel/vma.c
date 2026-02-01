@@ -108,6 +108,7 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
 {
   struct vma *split_target = 0; // vma to be splitted
   struct vma *it = tbl->vma_head;
+  struct vma *ret = vma_alloc();
 
   while(it != 0){
     int cmp = overlap_range_cmp(it->vstart, it->len, vstart, len);
@@ -124,12 +125,12 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
 
   if(vstart == split_target->vstart && len < split_target->len){
     split_target->len = len;
-    return 0;
+    goto ret;
   }
 
   if(vstart > split_target->vstart && vstart + len == split_target->vstart + split_target->len){
     split_target->vstart = vstart;
-    return 0;
+    goto ret;
   }
 
 
@@ -173,7 +174,7 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   split_target->foffset = fend - split_target->len;
   split_target->prev = left_piece;
 
-  struct vma *ret = vma_alloc();
+ret:
   if(ret != 0){
     ret->mmap_flags = split_target->mmap_flags;
     ret->mmap_prot = split_target->mmap_prot;
@@ -246,7 +247,7 @@ vma_free(struct vma *vma)
 }
 
 int
-vma_mmap_eitherflush(struct vma *vma)
+vma_mmap_freepages(struct vma *vma)
 {
   struct proc *p = myproc();
 
@@ -256,11 +257,11 @@ vma_mmap_eitherflush(struct vma *vma)
 
   if(vma->mmap_flags & MAP_SHARED){
     struct inode *ip = idup(vma->ip);
-    ilock(ip);
+    begin_op();
     for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
       pte_t *pte = walk(p->pagetable, vaddr, 0);
       if(pte == 0){
-        panic("vma_mmap_eitherflush: pte doesn't exist");
+        panic("vma_mmap_freepages: pte doesn't exist");
       }
 
       int dirty = *pte & PTE_D;
@@ -270,19 +271,45 @@ vma_mmap_eitherflush(struct vma *vma)
         continue;
       }
       
-      uint foffset = vma->vstart + (vaddr - vma->vstart);
+      off_t foffset = vma->foffset + (vaddr - vma->vstart);
       int err;
 
       // 'unmap' the page from the page cache
       // the page should be written back to the file,
-      // in the case it is dirty.
-      if((err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty)) < 0){
-        printf("debug: vma_mmap_eitherflush: fs_pgcache_unmap failed, err=%d\n", err);
-        iunlockput(ip);
-        return -1;
+      // in the case it is accessed.
+      if(*pte & PTE_A){
+        ilock(ip);
+        err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty);
+        if(err < 0){
+          printf("debug: vma_mmap_freepages: fs_pgcache_unmap failed, err=%d\n", err);
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        iunlock(ip);
+      }
+      *pte = 0;
+    }
+    iput(ip);
+    end_op();
+  } else if (vma->mmap_prot & MAP_PRIVATE){
+    for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
+      pte_t *pte = walk(p->pagetable, vaddr, 0);
+      if(pte == 0){
+        panic("vma_mmap_freepages: pte doesn't exist");
+      }
+      
+      if(!((*pte & PTE_V) && (*pte & PTE_MMAP))){
+        panic("vma_mmap_freepages: pte reaches inconsistent state");
+      }
+      
+      uint64 pa = PTE2PA(*pte);
+      if(*pte & PTE_A){
+        // since lazy loading is implemented, it's not necessary
+        // to kfree every PTE.
+        kfree((void*)pa);
       }
     }
-    iunlockput(ip);
   }
 
   // there is no need to flush MAP_PRIVATE vma

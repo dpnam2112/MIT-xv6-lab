@@ -109,7 +109,7 @@ sys_munmap(void)
   }
 
   int err;
-  if((err = vma_mmap_eitherflush(vma)) < 0){
+  if((err = vma_mmap_freepages(vma)) < 0){
     return -1;
   }
 

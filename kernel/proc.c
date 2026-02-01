@@ -507,8 +507,10 @@ sched(void)
 
   if(!holding(&p->lock))
     panic("sched p->lock");
-  if(mycpu()->noff != 1)
+  if(mycpu()->noff != 1){
+    printf("%d\n", mycpu()->noff);
     panic("sched locks");
+  }
   if(p->state == RUNNING)
     panic("sched running");
   if(intr_get())
@@ -715,8 +717,8 @@ proc_free_mmap_vma()
   struct vma *it = vma_tbl->vma_head;
   while(it != 0){
     struct vma *next = it->next;
-    if(vma_mmap_eitherflush(it) < 0){
-      printf("debug: proc_free_mmap_vma: error when calling vma_mmap_eitherflush\n");
+    if(vma_mmap_freepages(it) < 0){
+      printf("debug: proc_free_mmap_vma: error when calling vma_mmap_freepages\n");
     }
     vma_free(it);
     it = next;

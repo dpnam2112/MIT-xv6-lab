@@ -69,7 +69,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
     *pte |= PTE_X;
   }
 
-  uint64 foff = vma->foffset + (vaddr - vma->vstart);
+  off_t foff = vma->foffset + (vaddr - vma->vstart);
 
   if(vma->mmap_flags & MAP_PRIVATE){
     // load data to the process' private memory space
@@ -95,6 +95,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
     iunlockput(ip);
   } else if (vma->mmap_flags & MAP_SHARED){
     // load data to the page cache
+    off_t foff = vma->foffset + (vaddr - vma->vstart);
     struct inode *ip = idup(vma->ip);
     ilock(ip);
     uint64 cached_pg;
@@ -113,6 +114,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 
   return;
 fault:
+  printf("debug(mmap):\n");
   printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
   printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
   setkilled(p);
