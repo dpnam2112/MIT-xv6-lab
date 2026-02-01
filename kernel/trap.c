@@ -83,6 +83,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
       goto fault;
     }
 
+    memset(kpage, 0, PGSIZE);
     int err = readi(ip, 0, (uint64) kpage, foff, PGSIZE);
     if(err < 0){
       printf("debug: handle_mmap_pgfault(): failed to handle page fault. error while performing I/O.\n");

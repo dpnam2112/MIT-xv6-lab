@@ -109,14 +109,14 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   struct vma *split_target = 0; // vma to be splitted
   struct vma *it = tbl->vma_head;
 
-  do {
+  while(it != 0){
     int cmp = overlap_range_cmp(it->vstart, it->len, vstart, len);
     if(cmp == 0 && (vstart >= it->vstart && vstart + len <= it->vstart + it->len)){
       split_target = it;
       break;
     }
     it = it->next;
-  } while(it != tbl->vma_head);
+  }
 
   if(split_target == 0){
     return 0;
@@ -134,10 +134,19 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
 
 
   if(vstart == split_target->vstart && len == split_target->len){
-    split_target->prev->next = split_target->next;
-    split_target->next->prev = split_target->prev;
-    vma_free(split_target);
-    return 0;
+    if(split_target->prev != 0){
+      split_target->prev->next = split_target->next;
+    }
+
+    if(split_target->next != 0){
+      split_target->next->prev = split_target->prev;
+    }
+
+    if(split_target == tbl->vma_head){
+      tbl->vma_head = split_target->next;
+    }
+
+    return split_target;
   }
 
   // split the area and add that area to the vma list

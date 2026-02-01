@@ -136,6 +136,8 @@ fs_pgcache_map(struct inode *ip, int foffset, int ref_pid, int ref_vaddr, uint64
     return -ENOMEM;
   }
 
+  int err;
+
   struct fs_pgcache_ent *ent = 0;
   for(int i = 0; i < PGCACHE_MAXSIZE; i++){
     struct fs_pgcache_ent *ent_i = &fs_pgcache.entries[i];
@@ -143,23 +145,32 @@ fs_pgcache_map(struct inode *ip, int foffset, int ref_pid, int ref_vaddr, uint64
       ent = ent_i;
     }
   }
+
   if(ent == 0){
     printf("debug: no page cache entry available\n");
     release(&fs_pgcache_lk);
     return -ENOMEM;
   }
 
+  memset(kpage, 0, PGSIZE);
+  err = readi(ip, 0, (uint64) kpage, foffset, PGSIZE);
+  if(err < 0){
+    printf("debug: fs_pgcache_map(): error while performing I/O.\n");
+    release(&fs_pgcache_lk);
+    return -1;
+  }
+
+  err = fs_pgcache_ent_add_referrer(ent, ref_pid, ref_vaddr);
+  if(err == -ENOMEM){
+    printf("debug: fs_pgcache_map(): error adding referrer\n");
+    release(&fs_pgcache_lk);
+    return err;
+  }
+
   ent->alloc = 1;
   ent->kpage_addr = (uint64) kpage;
   ent->foffset = foffset;
   ent->inum = ip->inum;
-  ent->referrers = 0;
-
-  int err = fs_pgcache_ent_add_referrer(ent, ref_pid, ref_vaddr);
-  if(err == -ENOMEM){
-    release(&fs_pgcache_lk);
-    return err;
-  }
 
   release(&fs_pgcache_lk);
   return 0;

@@ -108,5 +108,6 @@ sys_munmap(void)
     return -1;
   }
 
+  vma_free(vma);
   return 0;
 }
