@@ -330,6 +330,16 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
+
+    if(flags & PTE_MMAP){
+      if((pte = walk(new, i, 1)) == 0){
+        goto err;
+      }
+
+      *pte = PA2PTE(0) | PTE_MMAP | PTE_V;
+      continue;
+    }
+
     if((mem = kalloc()) == 0)
       goto err;
     memmove(mem, (char*)pa, PGSIZE);

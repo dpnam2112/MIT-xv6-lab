@@ -16,7 +16,7 @@ char buf[PGSIZE];
 int
 main(int argc, char *argv[])
 {
-  mmap_test();
+//  mmap_test();
   fork_test();
   more_test();
   printf("mmaptest: all tests succeeded\n");

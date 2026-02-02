@@ -212,6 +212,7 @@ struct vma *    vma_alloc();
 int             vma_mmap_freepages(struct vma*);
 void            vma_free(struct vma*);
 void            vma_tbl_init(struct vma_tbl*);
+int             vma_tbl_copy(struct vma_tbl* target, struct vma_tbl* src);
 struct vma *    vma_tbl_lookup(struct vma_tbl *tbl, uint64 vaddr, int len);
 int             vma_tbl_mmap_add(struct vma_tbl *tbl, uint64 vstart, uint64 len, struct inode*, int foff, int mmap_flags, int mmap_prot);
 struct vma *    vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vaddr, int len);

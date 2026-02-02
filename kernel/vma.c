@@ -313,3 +313,48 @@ vma_mmap_freepages(struct vma *vma)
   // there is no need to flush MAP_PRIVATE vma
   return 0;
 }
+
+int
+vma_tbl_copy(struct vma_tbl *target, struct vma_tbl *src)
+{
+  if(target == 0 || src == 0 || target->vma_head != 0){
+    return -1;
+  }
+
+  struct vma *tail = 0;
+  for(struct vma *src_vma = src->vma_head; src_vma != 0; src_vma = src_vma->next){
+    struct vma *new = vma_alloc();
+    if(new == 0){
+      goto bad;
+    }
+
+    new->vstart = src_vma->vstart;
+    new->len = src_vma->len;
+    new->mmap_prot = src_vma->mmap_prot;
+    new->mmap_flags = src_vma->mmap_flags;
+    new->ip = idup(src_vma->ip);
+    new->foffset = src_vma->foffset;
+
+    if(tail == 0){
+      new->prev = 0;
+      new->next = 0;
+      target->vma_head = new;
+    } else {
+      tail->next = new;
+      new->prev = tail;
+      new->next = 0;
+    }
+
+    tail = new;
+  }
+
+  return 0;
+bad:
+  // free all of VMAs allocated for the target
+  while(target->vma_head != 0){
+    struct vma *freed = target->vma_head;
+    target->vma_head = freed->prev;
+    vma_free(freed);
+  }
+  return -1;
+}

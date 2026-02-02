@@ -298,6 +298,13 @@ fork(void)
     return -1;
   }
 
+  // TODO(mmap): Copy VMAs
+  if(vma_tbl_copy(&np->vma_tbl, &p->vma_tbl)){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -333,6 +340,7 @@ fork(void)
   release(&np->lock);
 
   // TODO(mmap): copy vma table
+
 
   return pid;
 }
