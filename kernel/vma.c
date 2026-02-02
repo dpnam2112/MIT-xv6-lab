@@ -124,12 +124,14 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   }
 
   if(vstart == split_target->vstart && len < split_target->len){
-    split_target->len = len;
+    split_target->vstart = vstart + len;
+    split_target->len -= len;
     goto ret;
   }
 
   if(vstart > split_target->vstart && vstart + len == split_target->vstart + split_target->len){
     split_target->vstart = vstart;
+    split_target->len -= len;
     goto ret;
   }
 
@@ -264,22 +266,19 @@ vma_mmap_freepages(struct vma *vma)
         panic("vma_mmap_freepages: pte doesn't exist");
       }
 
-      int dirty = *pte & PTE_D;
-      int accessed = *pte & PTE_A;
-
-      if(!(dirty || accessed)){
-        continue;
+      if(!((*pte & PTE_V) && (*pte & PTE_MMAP))){
+        panic("vma_mmap_freepages: pte reaches inconsistent state");
       }
-      
-      off_t foffset = vma->foffset + (vaddr - vma->vstart);
-      int err;
 
+      int accessed = *pte & PTE_A;
       // 'unmap' the page from the page cache
       // the page should be written back to the file,
       // in the case it is accessed.
-      if(*pte & PTE_A){
+      if(accessed){
         ilock(ip);
-        err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty);
+        int dirty = *pte & PTE_D;
+        off_t foffset = vma->foffset + (vaddr - vma->vstart);
+        int err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty);
         if(err < 0){
           printf("debug: vma_mmap_freepages: fs_pgcache_unmap failed, err=%d\n", err);
           iunlockput(ip);
