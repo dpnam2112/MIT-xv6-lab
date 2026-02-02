@@ -288,7 +288,6 @@ vma_mmap_freepages(struct vma *vma)
         }
         iunlock(ip);
       }
-      *pte = 0;
     }
     iput(ip);
     end_op();

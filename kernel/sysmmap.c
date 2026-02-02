@@ -105,11 +105,13 @@ sys_munmap(void)
   struct vma *vma = vma_tbl_mmap_rm(&p->vma_tbl, vstart, len);
   if(vma == 0 || vma->vma_type != VMA_MMAP){
     // no vma found, or something went wrong
+    printf("%p\n", vma);
     return -1;
   }
 
   int err;
   if((err = vma_mmap_freepages(vma)) < 0){
+    printf("debug: error freeing pages\n");
     return -1;
   }
 

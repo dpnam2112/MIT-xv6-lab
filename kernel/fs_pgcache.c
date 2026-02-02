@@ -225,12 +225,14 @@ fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, in
   fs_pgcache_referrer_free(referrer);
 
   if(ent->referrers == 0 && dirty){
-    int err = writei(ip, 0, ent->kpage_addr, foffset, PGSIZE);
+    int wrt_size = (ip->size - foffset < PGSIZE) ? ip->size - foffset : PGSIZE;
+    release(&fs_pgcache_lk);
+    int err = writei(ip, 0, ent->kpage_addr, foffset, wrt_size);
     if(err < 0){
       printf("debug: error when writing page back to file");
-      release(&fs_pgcache_lk);
       return -EIO;
     }
+    acquire(&fs_pgcache_lk);
   }
 
   kfree((void*) ent->kpage_addr);
