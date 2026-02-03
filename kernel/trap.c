@@ -40,20 +40,22 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
     goto fault;
   }
 
+  uint64 scause = r_scause();
+
   uint mmap_prot = vma->mmap_prot;
   if(mmap_prot == PROT_NONE){
     goto fault;
   }
 
-  if(r_scause() == 12 && !(mmap_prot & PROT_EXEC)){
+  if(scause == 12 && !(mmap_prot & PROT_EXEC)){
     goto fault;
   }
 
-  if(r_scause() == 13 && !(mmap_prot & PROT_READ)){
+  if(scause == 13 && !(mmap_prot & PROT_READ)){
     goto fault;
   }
 
-  if(r_scause() == 15 && !(mmap_prot & PROT_WRITE)){
+  if(scause == 15 && !(mmap_prot & PROT_WRITE)){
     goto fault;
   }
 
@@ -68,6 +70,8 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
   if (mmap_prot & PROT_EXEC){
     *pte |= PTE_X;
   }
+
+  *pte |= PTE_U;
 
   off_t foff = vma->foffset + (vaddr - vma->vstart);
 

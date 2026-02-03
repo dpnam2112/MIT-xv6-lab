@@ -336,7 +336,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
         goto err;
       }
 
-      *pte = PA2PTE(0) | PTE_MMAP | PTE_V;
+      *pte = PA2PTE(0) | flags | PTE_V;
+      *pte &= ~(PTE_R | PTE_W | PTE_X);
       continue;
     }
 
