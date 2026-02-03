@@ -166,7 +166,6 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  proc_free_mmap_vma();
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -299,7 +298,7 @@ fork(void)
   }
 
   // TODO(mmap): Copy VMAs
-  if(vma_tbl_copy(&np->vma_tbl, &p->vma_tbl)){
+  if(vma_tbl_copy(&np->vma_tbl, &p->vma_tbl) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -382,6 +381,7 @@ exit(int status)
 
   begin_op();
   iput(p->cwd);
+  proc_free_mmap_vma();
   end_op();
   p->cwd = 0;
 
@@ -515,10 +515,8 @@ sched(void)
 
   if(!holding(&p->lock))
     panic("sched p->lock");
-  if(mycpu()->noff != 1){
-    printf("%d\n", mycpu()->noff);
+  if(mycpu()->noff != 1)
     panic("sched locks");
-  }
   if(p->state == RUNNING)
     panic("sched running");
   if(intr_get())
@@ -725,8 +723,9 @@ proc_free_mmap_vma()
   struct vma *it = vma_tbl->vma_head;
   while(it != 0){
     struct vma *next = it->next;
-    if(vma_mmap_freepages(it) < 0){
-      printf("debug: proc_free_mmap_vma: error when calling vma_mmap_freepages\n");
+    int err;
+    if((err = vma_mmap_freepages(it)) < 0){
+      printf("debug: proc_free_mmap_vma: error when calling vma_mmap_freepages, err=%d\n", err);
     }
     vma_free(it);
     it = next;

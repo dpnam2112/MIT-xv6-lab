@@ -1,8 +1,8 @@
 // A simple mechanism to track referrers, which refer to a page.
 struct fs_pgcache_referrer {
   int alloc;
-	uint pid; // process id
-	uint vpgaddr; // address of the mmap-ed page in the process' vm space
+	int pid; // process id
+	uint64 vpgaddr; // address of the mmap-ed page in the process' vm space
 	struct fs_pgcache_referrer *next;
   struct fs_pgcache_referrer *prev;
 };

@@ -203,8 +203,8 @@ void            virtio_disk_intr(void);
 
 // fs_pgcache.c
 void            fs_pgcache_init(); 
-int             fs_pgcache_map(struct inode*, off_t foffset, int ref_pid, int ref_vaddr, uint64 *ret_phypg_addr);
-int             fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, int dirty);
+int             fs_pgcache_map(struct inode*, off_t foffset, int ref_pid, uint64 ref_vaddr, uint64 *ret_phypg_addr);
+int             fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, uint64 ref_vaddr, int dirty);
 
 // vma.c
 void            vmainit();

@@ -5,6 +5,9 @@
 #include "spinlock.h"
 #include "fcntl.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
 #include "vma.h"
 #include "proc.h"
 
@@ -71,9 +74,11 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
     *pte |= PTE_X;
   }
 
-  *pte |= PTE_U;
+  *pte |= (PTE_U | PTE_V);
 
   off_t foff = vma->foffset + (vaddr - vma->vstart);
+
+  printf("debug: trap/handle_mmap_pgfault: pid=%d vma->foffset=%lu vma->vstart=%lu vma->ip->inum=%d faultaddr=%lu\n", p->pid, vma->foffset, vma->vstart, vma->ip->inum, vaddr);
 
   if(vma->mmap_flags & MAP_PRIVATE){
     // load data to the process' private memory space
@@ -163,8 +168,12 @@ usertrap(void)
   } else if(r_scause() == 12 || r_scause() == 13 || r_scause() == 15){
     uint64 faulted_vaddr = r_stval();
     pte_t* pte = walk(p->pagetable, faulted_vaddr, 0);
-    if(pte != 0 && (*pte & PTE_MMAP)){
+    if(pte != 0 && (*pte & PTE_MMAP) && (*pte & PTE_V)){
       handle_mmap_pgfault(faulted_vaddr, pte);
+    } else {
+      printf("handle_mmap_pgfault(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+      setkilled(p);
     }
   } else if((which_dev = devintr()) != 0){
     // ok

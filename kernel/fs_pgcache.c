@@ -11,8 +11,8 @@
 #include "spinlock.h"
 #include "sleeplock.h"
 #include "fs.h"
-#include "fs_pgcache.h"
 #include "file.h"
+#include "fs_pgcache.h"
 
 struct fs_pgcache_referrer referrers[ALLOC_FS_PGCACHE_REFERRER_MAX];
 struct spinlock referrers_lk;
@@ -104,7 +104,7 @@ fs_pgcache_ent_add_referrer(struct fs_pgcache_ent *ent, int refpid, uint64 ref_v
 // map the on-disk page to an available page in
 // the page cache.
 int
-fs_pgcache_map(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, uint64 *ret_phypg_addr)
+fs_pgcache_map(struct inode *ip, off_t foffset, int ref_pid, uint64 ref_vaddr, uint64 *ret_phypg_addr)
 {
   if(ip == 0 || foffset % PGSIZE != 0 || ref_vaddr % PGSIZE != 0 || ret_phypg_addr == 0){
     printf("debug: in fs_pgcache_map: invalid parameters\n");
@@ -119,6 +119,7 @@ fs_pgcache_map(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, uint
     if(ent->alloc == 1 && ent->inum == ip->inum && ent->foffset == foffset){
       // this mmap-ed region is already in the page cache
       int err = fs_pgcache_ent_add_referrer(ent, ref_pid, ref_vaddr);
+      printf("debug: fs_pgcache_map: referrer added, ref_pid=%d, ref_vaddr=%lu, inum=%d, foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
       if(err < 0){
         release(&fs_pgcache_lk);
         return err;
@@ -169,6 +170,8 @@ fs_pgcache_map(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, uint
   ent->inum = ip->inum;
   *ret_phypg_addr = ent->kpage_addr;
 
+  printf("debug: fs_pgcache_map: new mapped page, ref_pid=%d, ref_vaddr=%lu, inum=%d, foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
+
   release(&fs_pgcache_lk);
   return 0;
 }
@@ -178,7 +181,7 @@ fs_pgcache_map(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, uint
 // - dirty: either 0 or 1. if dirty is set, that means the mmap-ed page
 // in the page cache should be written back to the disk later.
 int
-fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, int dirty)
+fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, uint64 ref_vaddr, int dirty)
 {
   acquire(&fs_pgcache_lk);
 
@@ -193,8 +196,9 @@ fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, in
   }
 
   if(ent == 0){
+    printf("debug: fs_pgcache_unmap: referrer not found, ref_pid=%d ref_vaddr=%lu inum=%d foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
     release(&fs_pgcache_lk);
-    return -ENOENT;
+    return 0;
   }
 
   struct fs_pgcache_referrer *referrer = ent->referrers;
@@ -206,7 +210,9 @@ fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, in
   }
 
   if(referrer == 0){
-    panic("fs_pgcache: no referrer");
+    printf("debug: fs_pgcache_unmap: no referrer, ref_pid=%d ref_vaddr=%lu inum=%d foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
+    release(&fs_pgcache_lk);
+    return 0;
   }
 
   // remove the referrer from the referrer-tracking list
@@ -223,23 +229,27 @@ fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, int ref_vaddr, in
   }
 
   fs_pgcache_referrer_free(referrer);
+  printf("debug: fs_pgcache_map: referrer removed, ref_pid=%d ref_vaddr=%lu inum=%d foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
 
-  if(ent->referrers == 0 && dirty){
-    int wrt_size = (ip->size - foffset < PGSIZE) ? ip->size - foffset : PGSIZE;
-    release(&fs_pgcache_lk);
-    int err = writei(ip, 0, ent->kpage_addr, foffset, wrt_size);
-    if(err < 0){
-      printf("debug: error when writing page back to file");
-      return -EIO;
+  if(ent->referrers == 0){
+    if(dirty){
+      int wrt_size = (ip->size - foffset < PGSIZE) ? ip->size - foffset : PGSIZE;
+      release(&fs_pgcache_lk);
+      int err = writei(ip, 0, ent->kpage_addr, foffset, wrt_size);
+      if(err < 0){
+        printf("debug: error when writing page back to file");
+        return -EIO;
+      }
+      printf("debug: wrote dirty page, inum=%d foffset=%lu\n", ip->inum, foffset);
+      acquire(&fs_pgcache_lk);
     }
-    acquire(&fs_pgcache_lk);
+    kfree((void*) ent->kpage_addr);
+    ent->kpage_addr = 0;
+    ent->alloc = 0;
+    ent->foffset = 0;
+    ent->inum = 0;
   }
 
-  kfree((void*) ent->kpage_addr);
-  ent->kpage_addr = 0;
-  ent->alloc = 0;
-  ent->foffset = 0;
-  ent->inum = 0;
   release(&fs_pgcache_lk);
   return 0;
 }

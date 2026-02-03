@@ -16,7 +16,7 @@ char buf[PGSIZE];
 int
 main(int argc, char *argv[])
 {
-//  mmap_test();
+  mmap_test();
   fork_test();
   more_test();
   printf("mmaptest: all tests succeeded\n");
@@ -418,7 +418,10 @@ more_test()
   fd = open(f, O_RDONLY);
   if(fd < 0) err("open");
   if(read(fd, buf, PGSIZE) != PGSIZE) err("read");
-  if(buf[0] != 'P') err("first byte of file is wrong");
+  if(buf[0] != 'P'){
+    printf("debug: buf[0]=%d\n", buf[0]);
+    err("first byte of file is wrong");
+  }
   if(read(fd, buf, PGSIZE) != PGSIZE/2) err("read");
   if(buf[0] != 'R') err("first byte of 2nd page of file is wrong");
   close(fd);

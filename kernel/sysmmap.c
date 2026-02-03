@@ -21,7 +21,7 @@ sys_mmap(void)
   uint len;
   int prot;
   int flags;
-  uint offset;
+  off_t offset;
   int fd;
 
   argaddr(0, &uvaddr);
@@ -29,7 +29,8 @@ sys_mmap(void)
   argint(2, &prot);
   argint(3, &flags);
   argint(4, &fd);
-  argint(5, (int*) &offset);
+  argaddr(5, (uint64*) &offset);
+
 
   if(uvaddr != 0 || prot == 0 || offset % PGSIZE != 0){
     // uvaddr == 0 is not supported.
@@ -54,6 +55,7 @@ sys_mmap(void)
 
 
   uint64 vstart = PGROUNDUP(p->sz);
+  printf("debug: sys_mmap: pid=%d vstart=%lu len=%d inum=%d foffset=%lu\n", p->pid, vstart, len, f->ip->inum, offset);
 
   // ensure that there is no other region occupied
   for(uint64 pgaddr = vstart; pgaddr < vstart + len; pgaddr = pgaddr + PGSIZE){
@@ -97,15 +99,16 @@ sys_munmap(void)
   argint(0, (int*) &vstart);
   argint(1, &len);
 
+
   if(vstart % PGSIZE != 0 || len < 0){
     return -EINVAL;
   }
 
   struct proc *p = myproc();
+  printf("debug: sys_munmap: pid=%d vstart=%lu len=%d\n", p->pid, vstart, len);
   struct vma *vma = vma_tbl_mmap_rm(&p->vma_tbl, vstart, len);
   if(vma == 0 || vma->vma_type != VMA_MMAP){
     // no vma found, or something went wrong
-    printf("%p\n", vma);
     return -1;
   }
 

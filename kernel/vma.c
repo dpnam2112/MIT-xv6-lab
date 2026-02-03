@@ -3,7 +3,10 @@
 #include "spinlock.h"
 #include "err.h"
 #include "riscv.h"
+#include "sleeplock.h"
 #include "defs.h"
+#include "fs.h"
+#include "file.h"
 #include "vma.h"
 #include "proc.h"
 #include "fcntl.h"
@@ -124,12 +127,14 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   }
 
   if(vstart == split_target->vstart && len < split_target->len){
-    split_target->vstart = vstart + len;
+    split_target->vstart += len;
+    split_target->foffset += len;
     split_target->len -= len;
     goto ret;
   }
 
   if(vstart > split_target->vstart && vstart + len == split_target->vstart + split_target->len){
+    split_target->foffset += vstart - split_target->vstart; 
     split_target->vstart = vstart;
     split_target->len -= len;
     goto ret;
@@ -257,6 +262,8 @@ vma_mmap_freepages(struct vma *vma)
     return -EINVAL;
   }
 
+
+  printf("debug: vma_mmap_freepages: pid=%d vma->ip->inum=%d vma->foffset=%lu vma->vstart=%lu vma->len=%d\n", p->pid, vma->ip->inum, vma->foffset, vma->vstart, vma->len);
   if(vma->mmap_flags & MAP_SHARED){
     struct inode *ip = idup(vma->ip);
     begin_op();
@@ -266,7 +273,7 @@ vma_mmap_freepages(struct vma *vma)
         panic("vma_mmap_freepages: pte doesn't exist");
       }
 
-      if(!((*pte & PTE_V) && (*pte & PTE_MMAP))){
+      if(!(*pte & (PTE_V | PTE_MMAP))){
         panic("vma_mmap_freepages: pte reaches inconsistent state");
       }
 
@@ -287,6 +294,7 @@ vma_mmap_freepages(struct vma *vma)
         }
         iunlock(ip);
       }
+      *pte = PTE_MMAP;
     }
     iput(ip);
     end_op();
@@ -297,7 +305,7 @@ vma_mmap_freepages(struct vma *vma)
         panic("vma_mmap_freepages: pte doesn't exist");
       }
       
-      if(!((*pte & PTE_V) && (*pte & PTE_MMAP))){
+      if(!((*pte & (PTE_V | PTE_MMAP)))){
         panic("vma_mmap_freepages: pte reaches inconsistent state");
       }
       
@@ -307,6 +315,7 @@ vma_mmap_freepages(struct vma *vma)
         // to kfree every PTE.
         kfree((void*)pa);
       }
+      *pte = PTE_MMAP;
     }
   }
 
@@ -334,6 +343,7 @@ vma_tbl_copy(struct vma_tbl *target, struct vma_tbl *src)
     new->mmap_flags = src_vma->mmap_flags;
     new->ip = idup(src_vma->ip);
     new->foffset = src_vma->foffset;
+    new->vma_type = src_vma->vma_type;
 
     if(tail == 0){
       new->prev = 0;

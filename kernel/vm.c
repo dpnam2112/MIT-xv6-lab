@@ -186,16 +186,16 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V && !(*pte & PTE_MMAP))
-      panic("uvmunmap: not a leaf");
+
     if(*pte & PTE_MMAP){
-      // already handled
-      // NOTE: this seems to be hackish somehow
       *pte = 0;
       continue;
     }
+
+    if((*pte & PTE_V) == 0)
+      panic("uvmunmap: not mapped");
+    if(PTE_FLAGS(*pte) == PTE_V)
+      panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
@@ -326,8 +326,21 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
+
+    if(*pte == PTE_MMAP){
+      pte_t *pte_new = walk(new, i, 1);
+      if(pte_new == 0){
+        goto err;
+      }
+
+      *pte_new = PTE_MMAP;
+      continue;
+    }
+
+    if((*pte & PTE_V) == 0){
+      printf("%lu\n", *pte);
       panic("uvmcopy: page not present");
+    }
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
@@ -336,7 +349,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
         goto err;
       }
 
-      *pte = PA2PTE(0) | flags | PTE_V;
+      *pte = PA2PTE(0) | flags | PTE_V | PTE_U;
       *pte &= ~(PTE_R | PTE_W | PTE_X);
       continue;
     }
