@@ -365,7 +365,7 @@ bad:
   // free all of VMAs allocated for the target
   while(target->vma_head != 0){
     struct vma *freed = target->vma_head;
-    target->vma_head = freed->prev;
+    target->vma_head = freed->next;
     vma_free(freed);
   }
   return -1;
