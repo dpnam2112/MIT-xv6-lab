@@ -79,9 +79,9 @@ sys_mmap(void)
   struct inode *ip = idup(f->ip);
   int err = vma_tbl_mmap_add(&p->vma_tbl, vstart, len, ip, offset, flags, prot);
   if(err < 0){
+    iput(ip);
     return err;
   }
-
   p->sz = vstart + len;
   return vstart;
 }
@@ -113,11 +113,14 @@ sys_munmap(void)
   }
 
   int err;
+  begin_op();
   if((err = vma_mmap_freepages(vma)) < 0){
     printf("debug: error freeing pages\n");
+    end_op();
     return -1;
   }
 
   vma_free(vma);
+  end_op();
   return 0;
 }

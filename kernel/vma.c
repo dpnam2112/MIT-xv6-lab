@@ -271,8 +271,7 @@ vma_mmap_freepages(struct vma *vma)
 
 //  printf("debug: vma_mmap_freepages: pid=%d vma->ip->inum=%d vma->foffset=%lu vma->vstart=%lu vma->len=%d\n", p->pid, vma->ip->inum, vma->foffset, vma->vstart, vma->len);
   if(vma->mmap_flags & MAP_SHARED){
-    struct inode *ip = idup(vma->ip);
-    begin_op();
+    struct inode *ip = vma->ip;
     for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
       pte_t *pte = walk(p->pagetable, vaddr, 0);
 //      printf("debug: vma_mmap_freepages: free page *pte=%lu vaddr=%lu\n", *pte, vaddr);
@@ -295,16 +294,13 @@ vma_mmap_freepages(struct vma *vma)
         int err = fs_pgcache_unmap(ip, foffset, p->pid, vaddr, dirty);
         if(err < 0){
           printf("debug: vma_mmap_freepages: fs_pgcache_unmap failed, err=%d\n", err);
-          iunlockput(ip);
-          end_op();
+          iunlock(ip);
           return -1;
         }
         iunlock(ip);
       }
       *pte = PTE_MMAP;
     }
-    iput(ip);
-    end_op();
   } else if (vma->mmap_prot & MAP_PRIVATE){
     for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
       pte_t *pte = walk(p->pagetable, vaddr, 0);
