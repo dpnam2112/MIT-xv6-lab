@@ -345,12 +345,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     flags = PTE_FLAGS(*pte);
 
     if(flags & PTE_MMAP){
-      if((pte = walk(new, i, 1)) == 0){
+      pte_t *pte_new = walk(new, i, 1);
+      if(pte_new == 0){
         goto err;
       }
 
-      *pte = PA2PTE(0) | flags | PTE_V | PTE_U;
-      *pte &= ~(PTE_R | PTE_W | PTE_X);
+      *pte_new = PA2PTE(0) | flags | PTE_V | PTE_U;
+      *pte_new &= ~(PTE_R | PTE_W | PTE_X);
       continue;
     }
 

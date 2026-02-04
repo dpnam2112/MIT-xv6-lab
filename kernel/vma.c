@@ -275,7 +275,7 @@ vma_mmap_freepages(struct vma *vma)
     begin_op();
     for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
       pte_t *pte = walk(p->pagetable, vaddr, 0);
-      printf("debug: vma_mmap_freepages: *pte=%lu\n", *pte);
+      printf("debug: vma_mmap_freepages: free page *pte=%lu vaddr=%lu\n", *pte, vaddr);
       if(pte == 0){
         panic("vma_mmap_freepages: pte doesn't exist");
       }

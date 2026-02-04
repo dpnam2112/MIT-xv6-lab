@@ -78,7 +78,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 
   off_t foff = vma->foffset + (vaddr - vma->vstart);
 
-  printf("debug: trap/handle_mmap_pgfault: pid=%d vma->foffset=%lu vma->vstart=%lu vma->ip->inum=%d faultaddr=%lu\n", p->pid, vma->foffset, vma->vstart, vma->ip->inum, vaddr);
+  printf("debug: trap/handle_mmap_pgfault: pid=%d vma->foffset=%lu vma->vstart=%lu vma->ip->inum=%d faultaddr=%lu scause=%lu\n", p->pid, vma->foffset, vma->vstart, vma->ip->inum, vaddr, scause);
 
   if(vma->mmap_flags & MAP_PRIVATE){
     // load data to the process' private memory space

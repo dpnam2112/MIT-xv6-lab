@@ -229,20 +229,21 @@ fs_pgcache_unmap(struct inode *ip, off_t foffset, int ref_pid, uint64 ref_vaddr,
   }
 
   fs_pgcache_referrer_free(referrer);
-  printf("debug: fs_pgcache_map: referrer removed, ref_pid=%d ref_vaddr=%lu inum=%d foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
+  printf("debug: fs_pgcache_unmap: referrer removed, ref_pid=%d ref_vaddr=%lu inum=%d foffset=%lu\n", ref_pid, ref_vaddr, ip->inum, foffset);
+
+  if(dirty){
+    int wrt_size = (ip->size - foffset < PGSIZE) ? ip->size - foffset : PGSIZE;
+    release(&fs_pgcache_lk);
+    int err = writei(ip, 0, ent->kpage_addr, foffset, wrt_size);
+    if(err < 0){
+      printf("debug: error when writing page back to file");
+      return -EIO;
+    }
+    printf("debug: fs_pgcache_unmap: wrote dirty page, inum=%d foffset=%lu\n", ip->inum, foffset);
+    acquire(&fs_pgcache_lk);
+  }
 
   if(ent->referrers == 0){
-    if(dirty){
-      int wrt_size = (ip->size - foffset < PGSIZE) ? ip->size - foffset : PGSIZE;
-      release(&fs_pgcache_lk);
-      int err = writei(ip, 0, ent->kpage_addr, foffset, wrt_size);
-      if(err < 0){
-        printf("debug: error when writing page back to file");
-        return -EIO;
-      }
-      printf("debug: wrote dirty page, inum=%d foffset=%lu\n", ip->inum, foffset);
-      acquire(&fs_pgcache_lk);
-    }
     kfree((void*) ent->kpage_addr);
     ent->kpage_addr = 0;
     ent->alloc = 0;
