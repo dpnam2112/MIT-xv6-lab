@@ -150,8 +150,6 @@ usertrap(void)
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
-    // system call
-
     if(killed(p))
       exit(-1);
 
@@ -164,7 +162,7 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if(r_scause() == 12 || r_scause() == 13 || r_scause() == 15){
+  } else if((r_scause() == 12 || r_scause() == 13 || r_scause() == 15) && r_stval() < MAXVA){
     uint64 faulted_vaddr = r_stval();
     pte_t* pte = walk(p->pagetable, faulted_vaddr, 0);
     if(pte != 0 && (*pte & PTE_MMAP) && (*pte & PTE_V)){
