@@ -123,7 +123,7 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
     it = it->next;
   }
 
-  printf("debug: vma_tbl_mmap_rm: unmap region vstart=%lu len=%d from the vma split_target->vstart=%lu split_target->len=%d split_target->inum=%d split_target->foffset=%lu\n", vstart, len, split_target->vstart, split_target->len, split_target->ip->inum, split_target->foffset);
+//  printf("debug: vma_tbl_mmap_rm: unmap region vstart=%lu len=%d from the vma split_target->vstart=%lu split_target->len=%d split_target->inum=%d split_target->foffset=%lu\n", vstart, len, split_target->vstart, split_target->len, split_target->ip->inum, split_target->foffset);
 
   if(split_target == 0){
     return 0;
@@ -269,13 +269,13 @@ vma_mmap_freepages(struct vma *vma)
   }
 
 
-  printf("debug: vma_mmap_freepages: pid=%d vma->ip->inum=%d vma->foffset=%lu vma->vstart=%lu vma->len=%d\n", p->pid, vma->ip->inum, vma->foffset, vma->vstart, vma->len);
+//  printf("debug: vma_mmap_freepages: pid=%d vma->ip->inum=%d vma->foffset=%lu vma->vstart=%lu vma->len=%d\n", p->pid, vma->ip->inum, vma->foffset, vma->vstart, vma->len);
   if(vma->mmap_flags & MAP_SHARED){
     struct inode *ip = idup(vma->ip);
     begin_op();
     for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
       pte_t *pte = walk(p->pagetable, vaddr, 0);
-      printf("debug: vma_mmap_freepages: free page *pte=%lu vaddr=%lu\n", *pte, vaddr);
+//      printf("debug: vma_mmap_freepages: free page *pte=%lu vaddr=%lu\n", *pte, vaddr);
       if(pte == 0){
         panic("vma_mmap_freepages: pte doesn't exist");
       }

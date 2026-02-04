@@ -78,7 +78,7 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 
   off_t foff = vma->foffset + (vaddr - vma->vstart);
 
-  printf("debug: trap/handle_mmap_pgfault: pid=%d vma->foffset=%lu vma->vstart=%lu vma->ip->inum=%d faultaddr=%lu scause=%lu\n", p->pid, vma->foffset, vma->vstart, vma->ip->inum, vaddr, scause);
+//  printf("debug: trap/handle_mmap_pgfault: pid=%d vma->foffset=%lu vma->vstart=%lu vma->ip->inum=%d faultaddr=%lu scause=%lu\n", p->pid, vma->foffset, vma->vstart, vma->ip->inum, vaddr, scause);
 
   if(vma->mmap_flags & MAP_PRIVATE){
     // load data to the process' private memory space
@@ -123,7 +123,6 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 
   return;
 fault:
-  printf("debug(mmap):\n");
   printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
   printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
   setkilled(p);

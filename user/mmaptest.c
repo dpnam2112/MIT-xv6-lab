@@ -198,10 +198,8 @@ mmap_test(void)
       err("file page 0 does not contain modifications");
   }
   uint sz;
-  if((sz = read(fd, buf, PGSIZE)) != PGSIZE/2){
-    printf("debug: sz=%d\n", sz);
+  if((sz = read(fd, buf, PGSIZE)) != PGSIZE/2)
     err("dirty read #2");
-  }
   for (i = 0; i < PGSIZE/2; i++){
     if (buf[i] != 'C')
       err("file page 1 does not contain modifications");
@@ -418,10 +416,8 @@ more_test()
   fd = open(f, O_RDONLY);
   if(fd < 0) err("open");
   if(read(fd, buf, PGSIZE) != PGSIZE) err("read");
-  if(buf[0] != 'P'){
-    printf("debug: buf[0]=%d\n", buf[0]);
+  if(buf[0] != 'P')
     err("first byte of file is wrong");
-  }
   if(read(fd, buf, PGSIZE) != PGSIZE/2) err("read");
   if(buf[0] != 'R') err("first byte of 2nd page of file is wrong");
   close(fd);
