@@ -113,6 +113,7 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   struct vma *it = tbl->vma_head;
   struct vma *ret = vma_alloc();
 
+
   while(it != 0){
     int cmp = overlap_range_cmp(it->vstart, it->len, vstart, len);
     if(cmp == 0 && (vstart >= it->vstart && vstart + len <= it->vstart + it->len)){
@@ -122,9 +123,13 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
     it = it->next;
   }
 
+  printf("debug: vma_tbl_mmap_rm: unmap region vstart=%lu len=%d from the vma split_target->vstart=%lu split_target->len=%d split_target->inum=%d split_target->foffset=%lu\n", vstart, len, split_target->vstart, split_target->len, split_target->ip->inum, split_target->foffset);
+
   if(split_target == 0){
     return 0;
   }
+
+  uint64 ret_foffset = split_target->foffset + (vstart - split_target->vstart);
 
   if(vstart == split_target->vstart && len < split_target->len){
     split_target->vstart += len;
@@ -188,6 +193,7 @@ ret:
     ret->ip = idup(split_target->ip);
     ret->vstart = vstart;
     ret->len = len;
+    ret->foffset = ret_foffset;
     ret->vma_type = VMA_MMAP;
   }
   
@@ -269,6 +275,7 @@ vma_mmap_freepages(struct vma *vma)
     begin_op();
     for(uint64 vaddr = vma->vstart; vaddr < vma->vstart + vma->len; vaddr += PGSIZE){
       pte_t *pte = walk(p->pagetable, vaddr, 0);
+      printf("debug: vma_mmap_freepages: *pte=%lu\n", *pte);
       if(pte == 0){
         panic("vma_mmap_freepages: pte doesn't exist");
       }
