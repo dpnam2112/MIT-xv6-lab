@@ -82,13 +82,13 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
 
   if(vma->mmap_flags & MAP_PRIVATE){
     // load data to the process' private memory space
-    struct inode *ip = idup(vma->ip);
+    struct inode *ip = vma->ip;
     ilock(ip);
 
     void *kpage = kalloc();
     if(kpage == 0){
       printf("debug: handle_mmap_pgfault(): failed to handle trap. No memory is available.");
-      iunlockput(ip);
+      iunlock(ip);
       goto fault;
     }
 
@@ -96,27 +96,27 @@ handle_mmap_pgfault(uint64 vaddr, pte_t *pte)
     int err = readi(ip, 0, (uint64) kpage, foff, PGSIZE);
     if(err < 0){
       printf("debug: handle_mmap_pgfault(): failed to handle page fault. error while performing I/O.\n");
-      iunlockput(ip);
+      iunlock(ip);
       goto fault;
     }
 
     *pte |= PA2PTE(kpage);
-    iunlockput(ip);
+    iunlock(ip);
   } else if (vma->mmap_flags & MAP_SHARED){
     // load data to the page cache
     off_t foff = vma->foffset + (vaddr - vma->vstart);
-    struct inode *ip = idup(vma->ip);
+    struct inode *ip = vma->ip;
     ilock(ip);
     uint64 cached_pg;
     int err = fs_pgcache_map(ip, foff, p->pid, vaddr, &cached_pg);
     if(err < 0){
       printf("handle_mmap_pgfault(): failed to load data from file to page cache.");
-      iunlockput(ip);
+      iunlock(ip);
       goto fault;
     }
 
     *pte |= PA2PTE(cached_pg);
-    iunlockput(ip);
+    iunlock(ip);
   } else {
     goto fault;
   }

@@ -184,7 +184,6 @@ vma_tbl_mmap_rm(struct vma_tbl *tbl, uint64 vstart, int len)
   split_target->vstart = vstart + len;
   split_target->len = vend - (vstart + len);
   split_target->foffset = fend - split_target->len;
-  split_target->prev = left_piece;
 
 ret:
   if(ret != 0){

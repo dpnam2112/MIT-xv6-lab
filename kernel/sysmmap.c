@@ -116,6 +116,7 @@ sys_munmap(void)
   begin_op();
   if((err = vma_mmap_freepages(vma)) < 0){
     printf("debug: error freeing pages\n");
+    vma_free(vma);
     end_op();
     return -1;
   }
